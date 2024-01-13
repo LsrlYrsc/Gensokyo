@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"path/filepath"
 	"regexp"
@@ -18,7 +21,9 @@ import (
 	"github.com/hoshinonyaruko/gensokyo/idmap"
 	"github.com/hoshinonyaruko/gensokyo/mylog"
 	"github.com/hoshinonyaruko/gensokyo/url"
+	"github.com/skip2/go-qrcode"
 	"github.com/tencent-connect/botgo/dto"
+	"github.com/tencent-connect/botgo/dto/keyboard"
 	"github.com/tencent-connect/botgo/openapi"
 	"mvdan.cc/xurls" //xurls是一个从文本提取url的库 适用于多种场景
 )
@@ -37,11 +42,11 @@ type ServerResponse struct {
 	Echo    interface{} `json:"echo"`
 }
 
-// 发送成功回执 todo 返回可互转的messageid
-func SendResponse(client callapi.Client, err error, message *callapi.ActionMessage) error {
+// 发送成功回执 todo 返回可互转的messageid 实现频道撤回api
+func SendResponse(client callapi.Client, err error, message *callapi.ActionMessage) (string, error) {
 	// 设置响应值
 	response := ServerResponse{}
-	response.Data.MessageID = 0 // todo 实现messageid转换
+	response.Data.MessageID = 123 // todo 实现messageid转换
 	response.Echo = message.Echo
 	if err != nil {
 		response.Message = err.Error() // 可选：在响应中添加错误消息
@@ -57,19 +62,25 @@ func SendResponse(client callapi.Client, err error, message *callapi.ActionMessa
 
 	// 转化为map并发送
 	outputMap := structToMap(response)
-
+	// 将map转换为JSON字符串
+	jsonResponse, jsonErr := json.Marshal(outputMap)
+	if jsonErr != nil {
+		log.Printf("Error marshaling response to JSON: %v", jsonErr)
+		return "", jsonErr
+	}
+	//发送给ws 客户端
 	sendErr := client.SendMessage(outputMap)
 	if sendErr != nil {
 		mylog.Printf("Error sending message via client: %v", sendErr)
-		return sendErr
+		return "", sendErr
 	}
 
-	mylog.Printf("发送成功回执: %+v", outputMap)
-	return nil
+	mylog.Printf("发送成功回执: %+v", string(jsonResponse))
+	return string(jsonResponse), nil
 }
 
 // 信息处理函数
-func parseMessageContent(paramsMessage callapi.ParamsContent) (string, map[string][]string) {
+func parseMessageContent(paramsMessage callapi.ParamsContent, message callapi.ActionMessage, client callapi.Client, api openapi.OpenAPI, apiv2 openapi.OpenAPI) (string, map[string][]string) {
 	messageText := ""
 
 	switch message := paramsMessage.Message.(type) {
@@ -106,6 +117,9 @@ func parseMessageContent(paramsMessage callapi.ParamsContent) (string, map[strin
 			case "at":
 				qqNumber, _ := segmentMap["data"].(map[string]interface{})["qq"].(string)
 				segmentContent = "[CQ:at,qq=" + qqNumber + "]"
+			case "markdown":
+				mdContent, _ := segmentMap["data"].(map[string]interface{})["data"].(string)
+				segmentContent = "[CQ:markdown,data=" + mdContent + "]"
 			}
 
 			messageText += segmentContent
@@ -129,11 +143,18 @@ func parseMessageContent(paramsMessage callapi.ParamsContent) (string, map[strin
 		case "at":
 			qqNumber, _ := message["data"].(map[string]interface{})["qq"].(string)
 			messageText = "[CQ:at,qq=" + qqNumber + "]"
+		case "markdown":
+			mdContent, _ := message["data"].(map[string]interface{})["data"].(string)
+			messageText = "[CQ:markdown,data=" + mdContent + "]"
 		}
 	default:
 		mylog.Println("Unsupported message format: params.message field is not a string, map or slice")
 	}
+	//处理at
+	messageText = transformMessageTextAt(messageText)
+
 	//mylog.Printf(messageText)
+
 	// 正则表达式部分
 	var localImagePattern *regexp.Regexp
 	var localRecordPattern *regexp.Regexp
@@ -147,19 +168,27 @@ func parseMessageContent(paramsMessage callapi.ParamsContent) (string, map[strin
 	} else {
 		localRecordPattern = regexp.MustCompile(`\[CQ:record,file=file://([^\]]+?)\]`)
 	}
-	urlImagePattern := regexp.MustCompile(`\[CQ:image,file=https?://(.+)\]`)
+	httpUrlImagePattern := regexp.MustCompile(`\[CQ:image,file=http://(.+)\]`)
+	httpsUrlImagePattern := regexp.MustCompile(`\[CQ:image,file=https://(.+)\]`)
 	base64ImagePattern := regexp.MustCompile(`\[CQ:image,file=base64://(.+)\]`)
 	base64RecordPattern := regexp.MustCompile(`\[CQ:record,file=base64://(.+)\]`)
+	httpUrlRecordPattern := regexp.MustCompile(`\[CQ:record,file=http://(.+)\]`)
+	httpsUrlRecordPattern := regexp.MustCompile(`\[CQ:record,file=https://(.+)\]`)
+	mdPattern := regexp.MustCompile(`\[CQ:markdown,data=base64://(.+)\]`)
 
 	patterns := []struct {
 		key     string
 		pattern *regexp.Regexp
 	}{
 		{"local_image", localImagePattern},
-		{"url_image", urlImagePattern},
+		{"url_image", httpUrlImagePattern},
+		{"url_images", httpsUrlImagePattern},
 		{"base64_image", base64ImagePattern},
 		{"base64_record", base64RecordPattern},
 		{"local_record", localRecordPattern},
+		{"url_record", httpUrlRecordPattern},
+		{"url_records", httpsUrlRecordPattern},
+		{"markdown", mdPattern},
 	}
 
 	foundItems := make(map[string][]string)
@@ -173,9 +202,8 @@ func parseMessageContent(paramsMessage callapi.ParamsContent) (string, map[strin
 		// 移动替换操作到这里，确保所有匹配都被处理后再进行替换
 		messageText = pattern.pattern.ReplaceAllString(messageText, "")
 	}
-
-	//处理at
-	messageText = transformMessageText(messageText)
+	//最后再处理Url
+	messageText = transformMessageTextUrl(messageText, message, client, api, apiv2)
 
 	// for key, items := range foundItems {
 	// 	fmt.Printf("Key: %s, Items: %v\n", key, items)
@@ -187,8 +215,8 @@ func isIPAddress(address string) bool {
 	return net.ParseIP(address) != nil
 }
 
-// at处理和链接处理
-func transformMessageText(messageText string) string {
+// at处理
+func transformMessageTextAt(messageText string) string {
 	// 首先，将AppID替换为BotID
 	messageText = strings.ReplaceAll(messageText, AppID, BotID)
 
@@ -217,35 +245,74 @@ func transformMessageText(messageText string) string {
 		}
 		return m
 	})
-	// 判断服务器地址是否是IP地址
-	serverAddress := config.GetServer_dir()
-	isIP := isIPAddress(serverAddress)
-	VisualIP := config.GetVisibleIP()
-	// 使用xurls来查找和替换所有的URL
-	messageText = xurls.Relaxed.ReplaceAllStringFunc(messageText, func(originalURL string) string {
-		// 当服务器地址是IP地址且GetVisibleIP为false时，替换URL为空
-		if isIP && !VisualIP {
-			return ""
-		}
-
-		// 根据配置处理URL
-		if config.GetLotusValue() {
-			// 连接到另一个gensokyo
-			shortURL := url.GenerateShortURL(originalURL)
-			return shortURL
-		} else {
-			// 自己是主节点
-			shortURL := url.GenerateShortURL(originalURL)
-			// 使用getBaseURL函数来获取baseUrl并与shortURL组合
-			return url.GetBaseURL() + "/url/" + shortURL
-		}
-	})
 	return messageText
 }
 
+// 链接处理
+func transformMessageTextUrl(messageText string, message callapi.ActionMessage, client callapi.Client, api openapi.OpenAPI, apiv2 openapi.OpenAPI) string {
+	// 是否处理url
+	if config.GetTransferUrl() {
+		// 判断服务器地址是否是IP地址
+		serverAddress := config.GetServer_dir()
+		isIP := isIPAddress(serverAddress)
+		VisualIP := config.GetVisibleIP()
+
+		// 使用xurls来查找和替换所有的URL
+		messageText = xurls.Relaxed.ReplaceAllStringFunc(messageText, func(originalURL string) string {
+			// 当服务器地址是IP地址且GetVisibleIP为false时，替换URL为空
+			if isIP && !VisualIP {
+				return ""
+			}
+
+			// 如果启用了URL到QR码的转换
+			if config.GetUrlToQrimage() {
+				// 将URL转换为QR码的字节形式
+				qrCodeGenerator, _ := qrcode.New(originalURL, qrcode.High)
+				qrCodeGenerator.DisableBorder = true
+				qrSize := config.GetQrSize()
+				pngBytes, _ := qrCodeGenerator.PNG(qrSize)
+				//pngBytes 二维码图片的字节数据
+				base64Image := base64.StdEncoding.EncodeToString(pngBytes)
+				picmsg := processActionMessageWithBase64PicReplace(base64Image, message)
+				ret := callapi.CallAPIFromDict(client, api, apiv2, picmsg)
+				mylog.Printf("发送url转图片结果:%v", ret)
+				// 从文本中去除原始URL
+				return "" // 返回空字符串以去除URL
+			}
+
+			// 根据配置处理URL
+			if config.GetLotusValue() {
+				// 连接到另一个gensokyo
+				shortURL := url.GenerateShortURL(originalURL)
+				return shortURL
+			} else {
+				// 自己是主节点
+				shortURL := url.GenerateShortURL(originalURL)
+				// 使用getBaseURL函数来获取baseUrl并与shortURL组合
+				return url.GetBaseURL() + "/url/" + shortURL
+			}
+		})
+	}
+	return messageText
+}
+
+// processActionMessageWithBase64PicReplace 将原有的callapi.ActionMessage内容替换为一个base64图片
+func processActionMessageWithBase64PicReplace(base64Image string, message callapi.ActionMessage) callapi.ActionMessage {
+	newMessage := createCQImageMessage(base64Image)
+	message.Params.Message = newMessage
+	return message
+}
+
+// createCQImageMessage 从 base64 编码的图片创建 CQ 码格式的消息
+func createCQImageMessage(base64Image string) string {
+	return "[CQ:image,file=base64://" + base64Image + "]"
+}
+
 // 处理at和其他定形文到onebotv11格式(cq码)
-func RevertTransformedText(data interface{}, msgtype string, api openapi.OpenAPI, apiv2 openapi.OpenAPI) string {
+func RevertTransformedText(data interface{}, msgtype string, api openapi.OpenAPI, apiv2 openapi.OpenAPI, vgid int64, vuid int64, whitenable bool) string {
 	var msg *dto.Message
+	var menumsg bool
+	var messageText string
 	switch v := data.(type) {
 	case *dto.WSGroupATMessageData:
 		msg = (*dto.Message)(v)
@@ -260,8 +327,18 @@ func RevertTransformedText(data interface{}, msgtype string, api openapi.OpenAPI
 	default:
 		return ""
 	}
-	//处理前 先去前后空
-	messageText := strings.TrimSpace(msg.Content)
+	menumsg = false
+	//单独一个空格的信息的空格用户并不希望去掉
+	if msg.Content == " " {
+		menumsg = true
+		messageText = " "
+	}
+
+	if !menumsg {
+		//处理前 先去前后空
+		messageText = strings.TrimSpace(msg.Content)
+	}
+	//mylog.Printf("1[%v]", messageText)
 
 	// 将messageText里的BotID替换成AppID
 	messageText = strings.ReplaceAll(messageText, BotID, AppID)
@@ -299,9 +376,12 @@ func RevertTransformedText(data interface{}, msgtype string, api openapi.OpenAPI
 	//结构 <@!>空格/内容
 	//如果移除了前部at,信息就会以空格开头,因为只移去了最前面的at,但at后紧跟随一个空格
 	if config.GetRemoveAt() {
-		//再次去前后空
-		messageText = strings.TrimSpace(messageText)
+		if !menumsg {
+			//再次去前后空
+			messageText = strings.TrimSpace(messageText)
+		}
 	}
+	//mylog.Printf("2[%v]", messageText)
 
 	// 检查是否需要移除前缀
 	if config.GetRemovePrefixValue() {
@@ -311,36 +391,67 @@ func RevertTransformedText(data interface{}, msgtype string, api openapi.OpenAPI
 		}
 	}
 
-	//检查是否启用白名单模式
-	if config.GetWhitePrefixMode() {
-		// 获取白名单数组
-		whitePrefixes := config.GetWhitePrefixs()
-		// 加锁以安全地读取 TemporaryCommands
-		idmap.MutexT.Lock()
-		temporaryCommands := make([]string, len(idmap.TemporaryCommands))
-		copy(temporaryCommands, idmap.TemporaryCommands)
-		idmap.MutexT.Unlock()
+	// 检查是否启用白名单模式
+	if config.GetWhitePrefixMode() && whitenable {
+		// 获取白名单反转标志
+		whiteBypassRevers := config.GetWhiteBypassRevers()
 
-		// 合并白名单和临时指令
-		allPrefixes := append(whitePrefixes, temporaryCommands...)
-		// 默认设置为不匹配
-		matched := false
+		// 获取白名单例外群数组（现在返回 int64 数组）
+		whiteBypass := config.GetWhiteBypass()
+		bypass := false
 
-		// 遍历白名单数组，检查是否有匹配项
-		for _, prefix := range allPrefixes {
-			if strings.HasPrefix(messageText, prefix) {
-				// 找到匹配项，保留 messageText 并跳出循环
-				matched = true
-				break
+		// 根据 whiteBypassRevers 的值来改变逻辑
+		if whiteBypassRevers {
+			// 如果反转白名单效果，只有在白名单数组中的 vgid 或 vuid 才生效
+			bypass = true // 默认设置为 true，意味着需要白名单检查
+			for _, id := range whiteBypass {
+				if id == vgid || id == vuid {
+					bypass = false // 如果在白名单数组中找到了 vgid 或 vuid，设置为 false
+					break
+				}
+			}
+		} else {
+			// 常规逻辑：检查 vgid 是否在白名单例外数组中
+			for _, id := range whiteBypass {
+				if id == vgid || id == vuid {
+					bypass = true
+					break
+				}
 			}
 		}
 
-		// 如果没有匹配项，则将 messageText 置为兜底回复 兜底回复可空
-		if !matched {
-			messageText = ""
-			SendMessage(config.GetNoWhiteResponse(), data, msgtype, api, apiv2)
+		// 如果vgid不在白名单例外数组中，则应用白名单过滤
+		if !bypass {
+			// 获取白名单数组
+			whitePrefixes := config.GetWhitePrefixs()
+			// 加锁以安全地读取 TemporaryCommands
+			idmap.MutexT.Lock()
+			temporaryCommands := make([]string, len(idmap.TemporaryCommands))
+			copy(temporaryCommands, idmap.TemporaryCommands)
+			idmap.MutexT.Unlock()
+
+			// 合并白名单和临时指令
+			allPrefixes := append(whitePrefixes, temporaryCommands...)
+			// 默认设置为不匹配
+			matched := false
+
+			// 遍历白名单数组，检查是否有匹配项
+			for _, prefix := range allPrefixes {
+				if strings.HasPrefix(messageText, prefix) {
+					// 找到匹配项，保留 messageText 并跳出循环
+					matched = true
+					break
+				}
+			}
+
+			// 如果没有匹配项，则将 messageText 置为兜底回复 兜底回复可空
+			if !matched {
+				messageText = ""
+				SendMessage(config.GetNoWhiteResponse(), data, msgtype, api, apiv2)
+			}
 		}
 	}
+	//mylog.Printf("3[%v]", messageText)
 	//检查是否启用黑名单模式
 	if config.GetBlackPrefixMode() {
 		// 获取黑名单数组
@@ -354,18 +465,110 @@ func RevertTransformedText(data interface{}, msgtype string, api openapi.OpenAPI
 			}
 		}
 	}
-	//移除以GetVisualkPrefixs数组开头的文本
+	// 移除以 GetVisualkPrefixs 数组开头的文本
 	visualkPrefixs := config.GetVisualkPrefixs()
-	for _, prefix := range visualkPrefixs {
-		if strings.HasPrefix(messageText, prefix) {
-			// 检查 messageText 是否比 prefix 长，这意味着后面还有其他内容
-			if len(messageText) > len(prefix) {
-				// 移除找到的前缀
-				messageText = strings.TrimPrefix(messageText, prefix)
-			}
-			break // 只移除第一个匹配的前缀
+	var matchedPrefix *config.VisualPrefixConfig
+	var isSpecialType bool    // 用于标记是否为特殊类型
+	var originalPrefix string // 存储原始前缀
+
+	// 处理特殊类型前缀
+	specialPrefixes := make(map[int]string)
+	for i, vp := range visualkPrefixs {
+		if strings.HasPrefix(vp.Prefix, "*") {
+			specialPrefixes[i] = vp.Prefix                                // 保存原始前缀
+			visualkPrefixs[i].Prefix = strings.TrimPrefix(vp.Prefix, "*") // 移除 '*'
 		}
 	}
+
+	for i, vp := range visualkPrefixs {
+		if strings.HasPrefix(messageText, vp.Prefix) {
+			if _, ok := specialPrefixes[i]; ok {
+				isSpecialType = true
+				originalPrefix = specialPrefixes[i] // 恢复原始前缀
+			}
+			// 检查 messageText 的长度是否大于 prefix 的长度
+			if len(messageText) > len(vp.Prefix) {
+				// 移除找到的前缀 且messageText不为空格
+				if messageText != " " {
+					messageText = strings.TrimPrefix(messageText, vp.Prefix)
+					messageText = strings.TrimSpace(messageText)
+					matchedPrefix = &vp
+				}
+				break // 只移除第一个匹配的前缀
+			}
+		}
+	}
+
+	// 已经完成了移除前缀等操作,进行aliases替换
+	aliases := config.GetAlias()
+	messageText = processMessageText(messageText, aliases)
+	//mylog.Printf("4[%v]", messageText)
+	// 检查是否启用白名单模式
+	if config.GetWhitePrefixMode() && matchedPrefix != nil {
+		// 获取白名单反转标志
+		whiteBypassRevers := config.GetWhiteBypassRevers()
+
+		// 获取白名单例外群数组（现在返回 int64 数组）
+		whiteBypass := config.GetWhiteBypass()
+		bypass := false
+
+		// 根据 whiteBypassRevers 的值来改变逻辑
+		if whiteBypassRevers {
+			// 如果反转白名单效果，只有在白名单数组中的 vgid 或 vuid 才生效
+			bypass = true // 默认设置为 true，意味着需要白名单检查
+			for _, id := range whiteBypass {
+				if id == vgid || id == vuid {
+					bypass = false // 如果在白名单数组中找到了 vgid 或 vuid，设置为 false
+					break
+				}
+			}
+		} else {
+			// 常规逻辑：检查 vgid 是否在白名单例外数组中
+			for _, id := range whiteBypass {
+				if id == vgid || id == vuid {
+					bypass = true
+					break
+				}
+			}
+		}
+
+		// 如果vgid不在白名单例外数组中，则应用白名单过滤
+		if !bypass {
+			allPrefixes := matchedPrefix.WhiteList
+			idmap.MutexT.Lock()
+			temporaryCommands := make([]string, len(idmap.TemporaryCommands))
+			copy(temporaryCommands, idmap.TemporaryCommands)
+			idmap.MutexT.Unlock()
+
+			// 合并虚拟前缀的白名单和临时指令
+			allPrefixes = append(allPrefixes, temporaryCommands...)
+			matched := false
+
+			// 遍历白名单数组，检查是否有匹配项
+			for _, prefix := range allPrefixes {
+				if strings.HasPrefix(messageText, prefix) {
+					matched = true
+					break
+				}
+			}
+
+			// 如果没有匹配项，则将 messageText 置为对应的兜底回复
+			if !matched {
+				messageText = ""
+				SendMessage(matchedPrefix.NoWhiteResponse, data, msgtype, api, apiv2)
+			}
+		}
+	}
+
+	// 在返回 messageText 时，根据 isSpecialType 判断是否需要添加原始前缀
+	if isSpecialType && matchedPrefix != nil {
+		//移除开头的*
+		originalPrefix = strings.TrimPrefix(originalPrefix, "*")
+		messageText = originalPrefix + messageText
+	}
+	//mylog.Printf("5[%v]", messageText)
+	// 如果未启用白名单模式或没有匹配的虚拟前缀，执行默认逻辑
+
 	// 处理图片附件
 	for _, attachment := range msg.Attachments {
 		if strings.HasPrefix(attachment.ContentType, "image/") {
@@ -385,7 +588,26 @@ func RevertTransformedText(data interface{}, msgtype string, api openapi.OpenAPI
 			messageText += imageCQ
 		}
 	}
+	//mylog.Printf("6[%v]", messageText)
+	return messageText
+}
 
+// replaceFirstOccurrence 替换字符串中的第一个匹配项
+func replaceFirstOccurrence(s, old, new string) string {
+	if idx := strings.Index(s, old); idx != -1 {
+		return s[:idx] + new + s[idx+len(old):]
+	}
+	return s
+}
+
+// processMessageText 处理消息文本
+func processMessageText(messageText string, aliases []string) string {
+	for i := 0; i < len(aliases); i += 2 {
+		// 确保别名数组中有成对的元素
+		if i+1 < len(aliases) {
+			messageText = replaceFirstOccurrence(messageText, aliases[i], aliases[i+1])
+		}
+	}
 	return messageText
 }
 
@@ -393,6 +615,7 @@ func RevertTransformedText(data interface{}, msgtype string, api openapi.OpenAPI
 func ConvertToSegmentedMessage(data interface{}) []map[string]interface{} {
 	// 强制类型转换，获取Message结构
 	var msg *dto.Message
+	var menumsg bool
 	switch v := data.(type) {
 	case *dto.WSGroupATMessageData:
 		msg = (*dto.Message)(v)
@@ -407,7 +630,11 @@ func ConvertToSegmentedMessage(data interface{}) []map[string]interface{} {
 	default:
 		return nil
 	}
-
+	menumsg = false
+	//单独一个空格的信息的空格用户并不希望去掉
+	if msg.Content == " " {
+		menumsg = true
+	}
 	var messageSegments []map[string]interface{}
 
 	// 处理Attachments字段来构建图片消息
@@ -485,7 +712,9 @@ func ConvertToSegmentedMessage(data interface{}) []map[string]interface{} {
 	//如果移除了前部at,信息就会以空格开头,因为只移去了最前面的at,但at后紧跟随一个空格
 	if config.GetRemoveAt() {
 		//再次去前后空
-		msg.Content = strings.TrimSpace(msg.Content)
+		if !menumsg {
+			msg.Content = strings.TrimSpace(msg.Content)
+		}
 	}
 
 	// 检查是否需要移除前缀
@@ -617,4 +846,72 @@ func SendMessage(messageText string, data interface{}, messageType string, api o
 	}
 
 	return nil
+}
+
+// 将map转化为json string
+func ConvertMapToJSONString(m map[string]interface{}) (string, error) {
+	// 使用 json.Marshal 将 map 转换为 JSON 字节切片
+	jsonBytes, err := json.Marshal(m)
+	if err != nil {
+		log.Printf("Error marshalling map to JSON: %v", err)
+		return "", err
+	}
+
+	// 将字节切片转换为字符串
+	jsonString := string(jsonBytes)
+	return jsonString, nil
+}
+
+func parseMDData(mdData []byte) (*dto.Markdown, *keyboard.MessageKeyboard, error) {
+	// 定义一个用于解析 JSON 的临时结构体
+	var temp struct {
+		Markdown struct {
+			CustomTemplateID *string               `json:"custom_template_id,omitempty"`
+			Params           []*dto.MarkdownParams `json:"params,omitempty"`
+			Content          string                `json:"content,omitempty"`
+		} `json:"markdown,omitempty"`
+		Keyboard struct {
+			ID      string                   `json:"id,omitempty"`
+			Content *keyboard.CustomKeyboard `json:"content,omitempty"`
+		} `json:"keyboard,omitempty"`
+		Rows []*keyboard.Row `json:"rows,omitempty"`
+	}
+
+	// 解析 JSON
+	if err := json.Unmarshal(mdData, &temp); err != nil {
+		return nil, nil, err
+	}
+
+	// 处理 Markdown
+	var md *dto.Markdown
+	if temp.Markdown.CustomTemplateID != nil {
+		// 处理模板 Markdown
+		md = &dto.Markdown{
+			CustomTemplateID: *temp.Markdown.CustomTemplateID,
+			Params:           temp.Markdown.Params,
+			Content:          temp.Markdown.Content,
+		}
+	} else if temp.Markdown.Content != "" {
+		// 处理自定义 Markdown
+		md = &dto.Markdown{
+			Content: temp.Markdown.Content,
+		}
+	}
+
+	// 处理 Keyboard
+	var kb *keyboard.MessageKeyboard
+	if temp.Keyboard.Content != nil {
+		// 处理嵌套在 Keyboard 中的 CustomKeyboard
+		kb = &keyboard.MessageKeyboard{
+			ID:      temp.Keyboard.ID,
+			Content: temp.Keyboard.Content,
+		}
+	} else if len(temp.Rows) > 0 {
+		// 处理顶层的 Rows
+		kb = &keyboard.MessageKeyboard{
+			Content: &keyboard.CustomKeyboard{Rows: temp.Rows},
+		}
+	}
+
+	return md, kb, nil
 }

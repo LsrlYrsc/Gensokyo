@@ -1,6 +1,7 @@
 package idmap
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/binary"
 	"encoding/hex"
@@ -54,7 +55,7 @@ func InitializeDB() {
 func CloseDB() {
 	db.Close()
 }
-func generateRowID(id string, length int) (int64, error) {
+func GenerateRowID(id string, length int) (int64, error) {
 	// 计算MD5哈希值
 	hasher := md5.New()
 	hasher.Write([]byte(id))
@@ -87,6 +88,32 @@ func generateRowID(id string, length int) (int64, error) {
 	return rowID, nil
 }
 
+// 检查id和value是否是转换关系
+func CheckValue(id string, value int64) bool {
+	// 计算int64值的长度
+	length := len(strconv.FormatInt(value, 10))
+
+	// 使用generateRowID转换id
+	generatedValue, err := GenerateRowID(id, length)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return false
+	}
+
+	// 比较生成的值与给定的值，如果相等返回false，不相等返回true
+	return generatedValue != value
+}
+
+func CheckValuev2(value int64) bool {
+	var isbinded bool
+	if value < 100000 {
+		isbinded = false
+	} else {
+		isbinded = true
+	}
+	return isbinded
+}
+
 // 根据a储存b
 func StoreID(id string) (int64, error) {
 	var newRow int64
@@ -113,7 +140,7 @@ func StoreID(id string) (int64, error) {
 		} else {
 			// 生成新的行号
 			var err error
-			newRow, err = generateRowID(id, 9)
+			newRow, err = GenerateRowID(id, 9)
 			if err != nil {
 				return err
 			}
@@ -121,7 +148,7 @@ func StoreID(id string) (int64, error) {
 			rowKey := fmt.Sprintf("row-%d", newRow)
 			if b.Get([]byte(rowKey)) != nil {
 				// 如果行号重复，使用10位数字生成行号
-				newRow, err = generateRowID(id, 10)
+				newRow, err = GenerateRowID(id, 10)
 				if err != nil {
 					return err
 				}
@@ -151,6 +178,85 @@ func StoreID(id string) (int64, error) {
 	return newRow, err
 }
 
+func SimplifiedStoreID(id string) (int64, error) {
+	var newRow int64
+
+	err := db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BucketName))
+
+		// 生成新的行号
+		var err error
+		newRow, err = GenerateRowID(id, 9)
+		if err != nil {
+			return err
+		}
+
+		// 检查新生成的行号是否重复
+		rowKey := fmt.Sprintf("row-%d", newRow)
+		if b.Get([]byte(rowKey)) != nil {
+			// 如果行号重复，使用10位数字生成行号
+			newRow, err = GenerateRowID(id, 10)
+			if err != nil {
+				return err
+			}
+			rowKey = fmt.Sprintf("row-%d", newRow)
+			// 再次检查重复性，如果还是重复，则返回错误
+			if b.Get([]byte(rowKey)) != nil {
+				return fmt.Errorf("unable to find a unique row ID 195")
+			}
+		}
+
+		// 只写入反向键
+		b.Put([]byte(rowKey), []byte(id))
+
+		return nil
+	})
+
+	return newRow, err
+}
+
+// SimplifiedStoreID 根据a储存b 储存一半
+func SimplifiedStoreIDv2(id string) (int64, error) {
+	if config.GetLotusValue() {
+		// 使用网络请求方式
+		serverDir := config.GetServer_dir()
+		portValue := config.GetPortValue()
+
+		// 根据portValue确定协议
+		protocol := "http"
+		if portValue == "443" {
+			protocol = "https"
+		}
+
+		// 构建请求URL
+		url := fmt.Sprintf("%s://%s:%s/getid?type=13&id=%s", protocol, serverDir, portValue, id)
+		resp, err := http.Get(url)
+		if err != nil {
+			return 0, fmt.Errorf("failed to send request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// 解析响应
+		var response map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return 0, fmt.Errorf("failed to decode response: %v", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return 0, fmt.Errorf("error response from server: %s", response["error"])
+		}
+
+		rowValue, ok := response["row"].(float64)
+		if !ok {
+			return 0, fmt.Errorf("invalid response format")
+		}
+
+		return int64(rowValue), nil
+	}
+
+	// 如果lotus为假,就保持原来的store的方法
+	return SimplifiedStoreID(id)
+}
+
 // 群号 然后 用户号
 func StoreIDPro(id string, subid string) (int64, int64, error) {
 	var newRowID, newSubRowID int64
@@ -171,12 +277,12 @@ func StoreIDPro(id string, subid string) (int64, int64, error) {
 		}
 
 		// 生成新的ID和SubID
-		newRowID, err = generateRowID(id, 9) // 使用generateRowID来生成
+		newRowID, err = GenerateRowID(id, 9) // 使用GenerateRowID来生成
 		if err != nil {
 			return err
 		}
 
-		newSubRowID, err = generateRowID(subid, 9) // 同样的方法生成SubID
+		newSubRowID, err = GenerateRowID(subid, 9) // 同样的方法生成SubID
 		if err != nil {
 			return err
 		}
@@ -700,7 +806,7 @@ func RetrieveRealValuev2(virtualValue int64) (string, string, error) {
 			return "", "", fmt.Errorf("error response from server")
 		}
 
-		realValue, ok := response["realValue"].(string)
+		realValue, ok := response["real"].(string)
 		if !ok {
 			return "", "", fmt.Errorf("invalid response format")
 		}
@@ -782,12 +888,12 @@ func RetrieveVirtualValuev2Pro(realValue string, realValueSub string) (string, s
 			return "", "", fmt.Errorf("error response from server: %s", response["error"])
 		}
 
-		firstValue, ok := response["firstValue"].(string)
+		firstValue, ok := response["id"].(string)
 		if !ok {
 			return "", "", fmt.Errorf("invalid response format for first value")
 		}
 
-		secondValue, ok := response["secondValue"].(string)
+		secondValue, ok := response["subid"].(string)
 		if !ok {
 			return "", "", fmt.Errorf("invalid response format for second value")
 		}
@@ -960,7 +1066,7 @@ func UpdateVirtualValuev2Pro(oldVirtualValue1, newVirtualValue1, oldVirtualValue
 			protocol = "https"
 		}
 
-		url := fmt.Sprintf("%s://%s:%s/updatevalues?type=12&oldVirtualValue1=%d&newVirtualValue1=%d&oldVirtualValue2=%d&newVirtualValue2=%d",
+		url := fmt.Sprintf("%s://%s:%s/getid?type=12&oldVirtualValue1=%d&newVirtualValue1=%d&oldVirtualValue2=%d&newVirtualValue2=%d",
 			protocol, serverDir, portValue, oldVirtualValue1, newVirtualValue1, oldVirtualValue2, newVirtualValue2)
 
 		resp, err := http.Get(url)
@@ -977,4 +1083,173 @@ func UpdateVirtualValuev2Pro(oldVirtualValue1, newVirtualValue1, oldVirtualValue
 	}
 
 	return UpdateVirtualValuePro(oldVirtualValue1, newVirtualValue1, oldVirtualValue2, newVirtualValue2)
+}
+
+// sub 要匹配的类型 typesuffix 相当于:type 的type
+func FindKeysBySubAndType(sub string, typeSuffix string) ([]string, error) {
+	var ids []string
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(ConfigBucket))
+		if b == nil {
+			return fmt.Errorf("bucket %s not found", ConfigBucket)
+		}
+
+		return b.ForEach(func(k, v []byte) error {
+			key := string(k)
+			value := string(v)
+
+			// 检查键是否以:type结尾，并且值是否匹配sub
+			if strings.HasSuffix(key, typeSuffix) && value == sub {
+				// 提取id部分
+				id := strings.Split(key, ":")[0]
+				ids = append(ids, id)
+			}
+			return nil
+		})
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}
+
+// 取相同前缀下的所有key的:后边 比如取群成员列表
+func FindSubKeysById(id string) ([]string, error) {
+	var subKeys []string
+
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("ids"))
+		if b == nil {
+			return fmt.Errorf("bucket %s not found", "ids")
+		}
+
+		c := b.Cursor()
+		prefix := []byte(id + ":")
+		for k, _ := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = c.Next() {
+			keyParts := bytes.Split(k, []byte(":"))
+			if len(keyParts) == 2 {
+				subKeys = append(subKeys, string(keyParts[1]))
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return subKeys, nil
+}
+
+// FindSubKeysByIdPro 根据1个值获取key中的k:v给出k获取所有v，通过网络调用
+func FindSubKeysByIdPro(id string) ([]string, error) {
+	if config.GetLotusValue() {
+		// 使用网络请求方式
+		serverDir := config.GetServer_dir()
+		portValue := config.GetPortValue()
+
+		// 根据portValue确定协议
+		protocol := "http"
+		if portValue == "443" {
+			protocol = "https"
+		}
+
+		// 构建请求URL
+		url := fmt.Sprintf("%s://%s:%s/getid?type=14&id=%s", protocol, serverDir, portValue, id)
+		resp, err := http.Get(url)
+		if err != nil {
+			return nil, fmt.Errorf("failed to send request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// 解析响应
+		var response map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return nil, fmt.Errorf("failed to decode response: %v", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("error response from server: %s", response["error"])
+		}
+
+		keys, ok := response["keys"].([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid response format for keys")
+		}
+
+		// 将interface{}类型的keys转换为[]string
+		var resultKeys []string
+		for _, key := range keys {
+			if strKey, ok := key.(string); ok {
+				resultKeys = append(resultKeys, strKey)
+			} else {
+				return nil, fmt.Errorf("invalid key format in response")
+			}
+		}
+
+		return resultKeys, nil
+	}
+
+	// 如果lotus为假，调用本地函数
+	return FindSubKeysById(id)
+}
+
+// 场景: xxx:yyy zzz:bbb  zzz:bbb xxx:yyy 把xxx(id)替换为newID 比如更换群号(会卡住)
+func UpdateKeysWithNewID(id, newID string) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(BucketName))
+		if b == nil {
+			return fmt.Errorf("bucket %s not found", BucketName)
+		}
+
+		// 临时存储需要更新的键和反向键
+		keysToUpdate := make(map[string]string)
+
+		// 查找所有以id开头的键
+		err := b.ForEach(func(k, v []byte) error {
+			key := string(k)
+			if strings.HasPrefix(key, id+":") {
+				value := string(v)
+				keysToUpdate[key] = value
+			}
+			return nil
+		})
+
+		if err != nil {
+			return err
+		}
+
+		// 更新找到的键和对应的反向键
+		for key, reverseKey := range keysToUpdate {
+			newKey := strings.Replace(key, id, newID, 1)
+
+			// 获取原反向键的值
+			reverseValueBytes := b.Get([]byte(reverseKey))
+			if reverseValueBytes == nil {
+				return fmt.Errorf("reverse key %s not found", reverseKey)
+			}
+
+			// 更新原键
+			err := b.Delete([]byte(key))
+			if err != nil {
+				return err
+			}
+			err = b.Put([]byte(newKey), []byte(reverseKey))
+			if err != nil {
+				return err
+			}
+
+			// 更新反向键的值
+			newReverseValue := strings.Replace(string(reverseValueBytes), id, newID, 1)
+			err = b.Put([]byte(reverseKey), []byte(newReverseValue))
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }

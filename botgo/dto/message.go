@@ -39,6 +39,15 @@ type Message struct {
 	MessageReference *MessageReference `json:"message_reference,omitempty"`
 	// 私信场景下，该字段用来标识从哪个频道发起的私信
 	SrcGuildID string `json:"src_guild_id"`
+	//返回的ret 超过主动限制会返回22009
+	Ret int `json:"ret,omitempty"`
+}
+
+// GroupAddBotEvent 表示群添加机器人事件的数据结构
+type GroupAddBotEvent struct {
+	GroupOpenID    string      `json:"group_openid"`
+	OpMemberOpenID string      `json:"op_member_openid"`
+	Timestamp      interface{} `json:"timestamp"`
 }
 
 type MediaResponse struct {
@@ -47,12 +56,20 @@ type MediaResponse struct {
 	//file_info
 	FileInfo string `json:"file_info"`
 	TTL      int    `json:"ttl"`
+	//返回的ret 超过主动限制会返回22009
+	Ret int `json:"ret,omitempty"`
 }
 
-//新增
+//群信息结构
 type GroupMessageResponse struct {
 	MediaResponse *MediaResponse
 	Message       *Message
+}
+
+// C2CMessageResponse 用于包装 C2C 消息的响应
+type C2CMessageResponse struct {
+	Message       *Message       `json:"message,omitempty"`
+	MediaResponse *MediaResponse `json:"media_response,omitempty"`
 }
 
 // Embed 结构

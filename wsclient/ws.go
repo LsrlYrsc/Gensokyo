@@ -42,9 +42,6 @@ func (c *WebSocketClient) SendMessage(message map[string]interface{}) error {
 	err = c.conn.WriteMessage(websocket.TextMessage, msgBytes)
 	if err != nil {
 		mylog.Println("Error sending message:", err)
-		if !c.isReconnecting {
-			go c.Reconnect()
-		}
 		// 发送失败，将消息放入channel
 		go func() {
 			c.sendFailures <- message
@@ -61,10 +58,10 @@ func (c *WebSocketClient) handleIncomingMessages(ctx context.Context, cancel con
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
 			mylog.Println("WebSocket connection closed:", err)
-			// cancel() // 取消心跳 goroutine
-			// if !c.isReconnecting {
-			// 	go c.Reconnect()
-			// }
+			cancel() // 取消心跳 goroutine
+			if !c.isReconnecting {
+				go c.Reconnect()
+			}
 			return // 退出循环，不再尝试读取消息
 		}
 
@@ -91,19 +88,18 @@ func (client *WebSocketClient) Reconnect() {
 		client.isReconnecting = false
 		client.mutex.Unlock()
 	}()
-
-	newClient, err := NewWebSocketClient(client.urlStr, client.botID, client.api, client.apiv2, 30)
+	reconnecttimes := config.GetReconnecTimes()
+	newClient, err := NewWebSocketClient(client.urlStr, client.botID, client.api, client.apiv2, reconnecttimes)
 	if err == nil && newClient != nil {
-		client.mutex.Lock()        // 在替换连接之前锁定
-		oldCancel := client.cancel // 保存旧的取消函数
+		client.mutex.Lock() // 在替换连接之前锁定
+		client.cancel()     // 退出旧的连接
 		client.conn = newClient.conn
 		client.api = newClient.api
 		client.apiv2 = newClient.apiv2
-		oldCancel()                      // 停止所有相关的旧协程
 		client.cancel = newClient.cancel // 更新取消函数
 		client.mutex.Unlock()
 		// 重发失败的消息
-		go newClient.processFailedMessages(oldSendFailures)
+		newClient.processFailedMessages(oldSendFailures)
 		mylog.Println("Successfully reconnected to WebSocket.")
 		return
 	}
@@ -152,12 +148,12 @@ func TruncateMessage(message callapi.ActionMessage, maxLength int) string {
 }
 
 // 发送心跳包
-func (c *WebSocketClient) sendHeartbeat(ctx context.Context, botID uint64) {
+func (c *WebSocketClient) sendHeartbeat(ctx context.Context, botID uint64, heartbeatinterval int) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(10 * time.Second):
+		case <-time.After(time.Duration(heartbeatinterval) * time.Second):
 			message := map[string]interface{}{
 				"post_type":       "meta_event",
 				"meta_event_type": "heartbeat",
@@ -272,8 +268,8 @@ func NewWebSocketClient(urlStr string, botID uint64, api openapi.OpenAPI, apiv2 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client.cancel = cancel
-
-	go client.sendHeartbeat(ctx, botID)
+	heartbeatinterval := config.GetHeartBeatInterval()
+	go client.sendHeartbeat(ctx, botID, heartbeatinterval)
 	go client.handleIncomingMessages(ctx, cancel)
 
 	return client, nil

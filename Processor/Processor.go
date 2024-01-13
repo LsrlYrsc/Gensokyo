@@ -2,12 +2,15 @@
 package Processor
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
+	"net/http"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -40,6 +43,12 @@ type Sender struct {
 	TinyID   string `json:"tiny_id"`
 	UserID   int64  `json:"user_id"`
 	Role     string `json:"role,omitempty"`
+	Card     string `json:"card,omitempty"`
+	Sex      string `json:"sex,omitempty"`
+	Age      int32  `json:"age,omitempty"`
+	Area     string `json:"area,omitempty"`
+	Level    string `json:"level,omitempty"`
+	Title    string `json:"title,omitempty"`
 }
 
 // 频道信息事件
@@ -63,39 +72,44 @@ type OnebotChannelMessage struct {
 
 // 群信息事件
 type OnebotGroupMessage struct {
-	RawMessage  string      `json:"raw_message"`
-	MessageID   int         `json:"message_id"`
-	GroupID     int64       `json:"group_id"` // Can be either string or int depending on p.Settings.CompleteFields
-	MessageType string      `json:"message_type"`
-	PostType    string      `json:"post_type"`
-	SelfID      int64       `json:"self_id"` // Can be either string or int
-	Sender      Sender      `json:"sender"`
-	SubType     string      `json:"sub_type"`
-	Time        int64       `json:"time"`
-	Avatar      string      `json:"avatar,omitempty"`
-	Echo        string      `json:"echo,omitempty"`
-	Message     interface{} `json:"message"` // For array format
-	MessageSeq  int         `json:"message_seq"`
-	Font        int         `json:"font"`
-	UserID      int64       `json:"user_id"`
+	RawMessage      string      `json:"raw_message"`
+	MessageID       int         `json:"message_id"`
+	GroupID         int64       `json:"group_id"` // Can be either string or int depending on p.Settings.CompleteFields
+	MessageType     string      `json:"message_type"`
+	PostType        string      `json:"post_type"`
+	SelfID          int64       `json:"self_id"` // Can be either string or int
+	Sender          Sender      `json:"sender"`
+	SubType         string      `json:"sub_type"`
+	Time            int64       `json:"time"`
+	Avatar          string      `json:"avatar,omitempty"`
+	Echo            string      `json:"echo,omitempty"`
+	Message         interface{} `json:"message"` // For array format
+	MessageSeq      int         `json:"message_seq"`
+	Font            int         `json:"font"`
+	UserID          int64       `json:"user_id"`
+	RealMessageType string      `json:"real_message_type,omitempty"`  //当前信息的真实类型 group group_private guild guild_private
+	IsBindedGroupId bool        `json:"is_binded_group_id,omitempty"` //当前群号是否是binded后的
+	IsBindedUserId  bool        `json:"is_binded_user_id,omitempty"`  //当前用户号号是否是binded后的
 }
 
 // 私聊信息事件
 type OnebotPrivateMessage struct {
-	RawMessage  string        `json:"raw_message"`
-	MessageID   int           `json:"message_id"` // Can be either string or int depending on logic
-	MessageType string        `json:"message_type"`
-	PostType    string        `json:"post_type"`
-	SelfID      int64         `json:"self_id"` // Can be either string or int depending on logic
-	Sender      PrivateSender `json:"sender"`
-	SubType     string        `json:"sub_type"`
-	Time        int64         `json:"time"`
-	Avatar      string        `json:"avatar,omitempty"`
-	Echo        string        `json:"echo,omitempty"`
-	Message     interface{}   `json:"message"`     // For array format
-	MessageSeq  int           `json:"message_seq"` // Optional field
-	Font        int           `json:"font"`        // Optional field
-	UserID      int64         `json:"user_id"`     // Can be either string or int depending on logic
+	RawMessage      string        `json:"raw_message"`
+	MessageID       int           `json:"message_id"` // Can be either string or int depending on logic
+	MessageType     string        `json:"message_type"`
+	PostType        string        `json:"post_type"`
+	SelfID          int64         `json:"self_id"` // Can be either string or int depending on logic
+	Sender          PrivateSender `json:"sender"`
+	SubType         string        `json:"sub_type"`
+	Time            int64         `json:"time"`
+	Avatar          string        `json:"avatar,omitempty"`
+	Echo            string        `json:"echo,omitempty"`
+	Message         interface{}   `json:"message"`                     // For array format
+	MessageSeq      int           `json:"message_seq"`                 // Optional field
+	Font            int           `json:"font"`                        // Optional field
+	UserID          int64         `json:"user_id"`                     // Can be either string or int depending on logic
+	RealMessageType string        `json:"real_message_type,omitempty"` //当前信息的真实类型 group group_private guild guild_private
+	IsBindedUserId  bool          `json:"is_binded_user_id,omitempty"` //当前用户号号是否是binded后的
 }
 
 type PrivateSender struct {
@@ -229,6 +243,7 @@ func (p *Processors) BroadcastMessageToAll(message map[string]interface{}) error
 
 	// 发送到我们作为客户端的Wsclient
 	for _, client := range p.Wsclient {
+		//mylog.Printf("第%v个Wsclient", test)
 		err := client.SendMessage(message)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("error sending private message via wsclient: %v", err))
@@ -248,7 +263,70 @@ func (p *Processors) BroadcastMessageToAll(message map[string]interface{}) error
 		return fmt.Errorf(strings.Join(errors, "; "))
 	}
 
+	//判断是否填写了反向post地址
+	if !allEmpty(config.GetPostUrl()) {
+		PostMessageToUrls(message)
+	}
 	return nil
+}
+
+// allEmpty checks if all the strings in the slice are empty.
+func allEmpty(addresses []string) bool {
+	for _, addr := range addresses {
+		if addr != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// 上报信息给反向Http
+func PostMessageToUrls(message map[string]interface{}) {
+	// 获取上报 URL 列表
+	postUrls := config.GetPostUrl()
+
+	// 检查 postUrls 是否为空
+	if len(postUrls) > 0 {
+
+		// 转换 message 为 JSON 字符串
+		jsonString, err := handlers.ConvertMapToJSONString(message)
+		if err != nil {
+			mylog.Printf("Error converting message to JSON: %v", err)
+			return
+		}
+
+		for _, url := range postUrls {
+			// 创建请求体
+			reqBody := bytes.NewBufferString(jsonString)
+
+			// 创建 POST 请求
+			req, err := http.NewRequest("POST", url, reqBody)
+			if err != nil {
+				mylog.Printf("Error creating POST request to %s: %v", url, err)
+				continue
+			}
+
+			// 设置请求头
+			req.Header.Set("Content-Type", "application/json")
+			// 设置 X-Self-ID
+			selfid := config.GetAppIDStr()
+			req.Header.Set("X-Self-ID", selfid)
+
+			// 发送请求
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				mylog.Printf("Error sending POST request to %s: %v", url, err)
+				continue
+			}
+
+			// 处理响应
+			defer resp.Body.Close()
+			// 可以添加更多的响应处理逻辑，如检查状态码等
+
+			mylog.Printf("Posted to %s successfully", url)
+		}
+	}
 }
 
 func (p *Processors) HandleFrameworkCommand(messageText string, data interface{}, Type string) error {
@@ -260,16 +338,27 @@ func (p *Processors) HandleFrameworkCommand(messageText string, data interface{}
 
 	// 去除字符串前后的空格
 	cleanedMessage = strings.TrimSpace(cleanedMessage)
+	if cleanedMessage == "t" {
+		// 生成临时指令
+		tempCmd := handleNoPermission()
+		mylog.Printf("临时bind指令: %s 可忽略权限检查1次,或将masterid设置为空数组", tempCmd)
+	}
 	var err error
 	var now, new, newpro1, newpro2 string
+	var nowgroup, newgroup string
 	var realid, realid2 string
+	var guildid, guilduserid string
 	switch v := data.(type) {
 	case *dto.WSGroupATMessageData:
 		realid = v.Author.ID
 	case *dto.WSATMessageData:
 		realid = v.Author.ID
+		guildid = v.GuildID
+		guilduserid = v.Author.ID
 	case *dto.WSMessageData:
 		realid = v.Author.ID
+		guildid = v.GuildID
+		guilduserid = v.Author.ID
 	case *dto.WSDirectMessageData:
 		realid = v.Author.ID
 	case *dto.WSC2CMessageData:
@@ -291,10 +380,22 @@ func (p *Processors) HandleFrameworkCommand(messageText string, data interface{}
 
 	// 获取MasterID数组
 	masterIDs := config.GetMasterID()
-	// 根据realid获取new
+	// 根据realid获取new(用户id)
 	now, new, err = idmap.RetrieveVirtualValuev2(realid)
+	if err != nil {
+		mylog.Printf("根据realid获取new(用户id) 错误:%v", err)
+	}
+	// 根据realid获取new(群id)
+	nowgroup, newgroup, err = idmap.RetrieveVirtualValuev2(realid2)
+	if err != nil {
+		mylog.Printf("根据realid获取new(群id)错误:%v", err)
+	}
+	// idmaps-pro获取群和用户id
 	if config.GetIdmapPro() {
 		newpro1, newpro2, err = idmap.RetrieveVirtualValuev2Pro(realid2, realid)
+		if err != nil {
+			mylog.Printf("idmaps-pro获取群和用户id 错误:%v", err)
+		}
 	}
 	// 检查真实值或虚拟值是否在数组中
 	var realValueIncluded, virtualValueIncluded bool
@@ -307,6 +408,27 @@ func (p *Processors) HandleFrameworkCommand(messageText string, data interface{}
 		// 否则，检查真实值或虚拟值是否在数组中
 		realValueIncluded = contains(masterIDs, realid)
 		virtualValueIncluded = contains(masterIDs, new)
+	}
+
+	//unlock指令
+	if Type == "guild" && strings.HasPrefix(cleanedMessage, config.GetUnlockPrefix()) {
+		dm := &dto.DirectMessageToCreate{
+			SourceGuildID: guildid,
+			RecipientID:   guilduserid,
+		}
+		cdm, err := p.Api.CreateDirectMessage(context.TODO(), dm)
+		if err != nil {
+			mylog.Printf("unlock指令创建dm失败:%v", err)
+		}
+		msg := &dto.MessageToCreate{
+			Content: "欢迎使用Gensokyo框架部署QQ机器人",
+			MsgType: 0,
+			MsgID:   "",
+		}
+		_, err = p.Api.PostDirectMessage(context.TODO(), cdm, msg)
+		if err != nil {
+			mylog.Printf("unlock指令发送失败:%v", err)
+		}
 	}
 
 	// me指令处理逻辑
@@ -329,12 +451,15 @@ func (p *Processors) HandleFrameworkCommand(messageText string, data interface{}
 			message := fmt.Sprintf("idmaps-pro状态:\n%s\n%s\n%s", userMapping, groupMapping, bindInstruction)
 			SendMessage(message, data, Type, p.Api, p.Apiv2)
 		} else {
-			SendMessage("目前状态:\n当前真实值 "+now+"\n当前虚拟值 "+new+"\nbind指令:"+config.GetBindPrefix()+" 当前虚拟值"+" 目标虚拟值", data, Type, p.Api, p.Apiv2)
+			SendMessage("目前状态:\n当前真实值(用户) "+now+"\n当前虚拟值(用户) "+new+"\n当前真实值(群/频道) "+nowgroup+"\n当前虚拟值(群/频道) "+newgroup+"\nbind指令:"+config.GetBindPrefix()+" 当前虚拟值"+" 目标虚拟值", data, Type, p.Api, p.Apiv2)
 		}
 		return nil
 	}
 
-	if realValueIncluded || virtualValueIncluded || isValidTemporaryCommand(strings.Fields(cleanedMessage)[0]) {
+	fields := strings.Fields(cleanedMessage)
+
+	// 首先确保消息不是空的，然后检查是否是有效的临时指令
+	if len(fields) > 0 && isValidTemporaryCommand(fields[0]) {
 		// 执行 bind 操作
 		if config.GetIdmapPro() {
 			err := performBindOperationV2(cleanedMessage, data, Type, p.Api, p.Apiv2, newpro1)
@@ -348,15 +473,30 @@ func (p *Processors) HandleFrameworkCommand(messageText string, data interface{}
 			}
 		}
 		return nil
-	} else {
-		if strings.HasPrefix(cleanedMessage, config.GetBindPrefix()) {
-			// 生成临时指令
-			tempCmd := handleNoPermission()
-			mylog.Printf("您没有权限,使用临时指令：%s 忽略权限检查,或将masterid设置为空数组", tempCmd)
-			SendMessage("您没有权限,请配置config.yml或查看日志,使用临时指令", data, Type, p.Api, p.Apiv2)
+	}
+
+	// 如果不是临时指令，检查是否具有执行bind操作的权限并且消息以特定前缀开始
+	if (realValueIncluded || virtualValueIncluded) && strings.HasPrefix(cleanedMessage, config.GetBindPrefix()) {
+		// 执行 bind 操作
+		if config.GetIdmapPro() {
+			err := performBindOperationV2(cleanedMessage, data, Type, p.Api, p.Apiv2, newpro1)
+			if err != nil {
+				mylog.Printf("bind遇到错误:%v", err)
+			}
+		} else {
+			err := performBindOperation(cleanedMessage, data, Type, p.Api, p.Apiv2)
+			if err != nil {
+				mylog.Printf("bind遇到错误:%v", err)
+			}
 		}
 		return nil
+	} else if strings.HasPrefix(cleanedMessage, config.GetBindPrefix()) {
+		// 生成临时指令
+		tempCmd := handleNoPermission()
+		mylog.Printf("您没有权限,使用临时指令：%s 忽略权限检查,或将masterid设置为空数组", tempCmd)
+		SendMessage("您没有权限,请配置config.yml或查看日志,使用临时指令", data, Type, p.Api, p.Apiv2)
 	}
+	return nil
 }
 
 // 生成由两个英文字母构成的唯一临时指令
@@ -424,7 +564,7 @@ func performBindOperation(cleanedMessage string, data interface{}, Type string, 
 	if err != nil {
 		SendMessage(err.Error(), data, Type, p, p2)
 	} else {
-		SendMessage("绑定成功,目前状态:\n当前真实值 "+now+"\n当前虚拟值 "+new, data, Type, p, p2)
+		SendMessage("绑定成功,目前状态:\n当前真实值 "+new+"\n当前虚拟值 "+now, data, Type, p, p2)
 	}
 
 	return nil
@@ -473,8 +613,13 @@ func performBindOperationV2(cleanedMessage string, data interface{}, Type string
 		}
 		newRowValue = oldRowValue // 使用相同的值
 	}
-
-	// 调用 UpdateVirtualValue
+	// 调用 UpdateVirtualValue(兼顾老转换)
+	err = idmap.UpdateVirtualValuev2(oldVirtualValue1, newVirtualValue1)
+	if err != nil {
+		SendMessage(err.Error(), data, Type, p, p2)
+		return err
+	}
+	// 调用 UpdateVirtualValuev2Pro
 	err = idmap.UpdateVirtualValuev2Pro(oldRowValue, newRowValue, oldVirtualValue1, newVirtualValue1)
 	if err != nil {
 		SendMessage(err.Error(), data, Type, p, p2)
@@ -499,6 +644,7 @@ func parseOrDefault(s string, defaultValue string) (int64, error) {
 	if err == nil && value != 0 {
 		return value, nil
 	}
+
 	return strconv.ParseInt(defaultValue, 10, 64)
 }
 
@@ -633,19 +779,28 @@ func (p *Processors) Autobind(data interface{}) error {
 	if err != nil {
 		return err
 	}
-
+	var GroupID64, userid64 int64
 	//获取虚拟值
 	// 映射str的GroupID到int
-	GroupID64, err := idmap.StoreIDv2(groupID)
+	GroupID64, err = idmap.StoreIDv2(groupID)
 	if err != nil {
 		mylog.Errorf("failed to convert ChannelID to int: %v", err)
 		return nil
 	}
 	// 映射str的userid到int
-	userid64, err := idmap.StoreIDv2(realID)
+	userid64, err = idmap.StoreIDv2(realID)
 	if err != nil {
 		mylog.Printf("Error storing ID: %v", err)
 		return nil
+	}
+	//覆盖赋值
+	if config.GetIdmapPro() {
+		//转换idmap-pro 虚拟值
+		//将真实id转为int userid64
+		GroupID64, userid64, err = idmap.StoreIDv2Pro(groupID, realID)
+		if err != nil {
+			mylog.Fatalf("Error storing ID689: %v", err)
+		}
 	}
 	// 单独检查vuin和gid的绑定状态
 	vuinBound := strconv.FormatInt(userid64, 10) == vuinstr
@@ -654,22 +809,30 @@ func (p *Processors) Autobind(data interface{}) error {
 	if !vuinBound && !gidBound {
 		// 两者都未绑定，更新两个映射
 		if err := updateMappings(userid64, vuinValue, GroupID64, idValue); err != nil {
-			return err
+			mylog.Printf("Error updateMappings for both: %v", err)
+			//return err
 		}
 		// idmaps pro也更新
-		idmap.UpdateVirtualValuev2Pro(GroupID64, idValue, userid64, vuinValue)
+		err = idmap.UpdateVirtualValuev2Pro(GroupID64, idValue, userid64, vuinValue)
+		if err != nil {
+			mylog.Fatalf("Error storing ID703: %v", err)
+		}
 	} else if !vuinBound {
 		// 只有vuin未绑定，更新vuin映射
 		if err := idmap.UpdateVirtualValuev2(userid64, vuinValue); err != nil {
 			mylog.Printf("Error UpdateVirtualValuev2 for vuin: %v", err)
-			return err
+			//return err
 		}
+		// idmaps pro也更新,但只更新vuin
+		idmap.UpdateVirtualValuev2Pro(GroupID64, idValue, userid64, vuinValue)
 	} else if !gidBound {
 		// 只有gid未绑定，更新gid映射
 		if err := idmap.UpdateVirtualValuev2(GroupID64, idValue); err != nil {
 			mylog.Printf("Error UpdateVirtualValuev2 for gid: %v", err)
-			return err
+			//return err
 		}
+		// idmaps pro也更新,但只更新gid
+		idmap.UpdateVirtualValuev2Pro(GroupID64, idValue, userid64, vuinValue)
 	} else {
 		// 两者都已绑定，不执行任何操作
 		mylog.Errorf("Both vuin and gid are already binded")
@@ -689,4 +852,17 @@ func updateMappings(userid64, vuinValue, GroupID64, idValue int64) error {
 		return err
 	}
 	return nil
+}
+
+// GenerateAvatarURL 生成根据给定 userID 和随机 q 值组合的 QQ 头像 URL
+func GenerateAvatarURL(userID int64) (string, error) {
+	// 使用 crypto/rand 生成更安全的随机数
+	n, err := rand.Int(rand.Reader, big.NewInt(5))
+	if err != nil {
+		return "", err
+	}
+	qNumber := n.Int64() + 1 // 产生 1 到 5 的随机数
+
+	// 构建并返回 URL
+	return fmt.Sprintf("http://q%d.qlogo.cn/g?b=qq&nk=%d&s=640", qNumber, userID), nil
 }

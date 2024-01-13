@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/hoshinonyaruko/gensokyo/callapi"
@@ -23,19 +24,21 @@ type LoginInfoData struct {
 }
 
 func init() {
-	callapi.RegisterHandler("get_login_info", getLoginInfo)
+	callapi.RegisterHandler("get_login_info", GetLoginInfo)
 }
 
-func getLoginInfo(client callapi.Client, api openapi.OpenAPI, apiv2 openapi.OpenAPI, message callapi.ActionMessage) {
+func GetLoginInfo(client callapi.Client, api openapi.OpenAPI, apiv2 openapi.OpenAPI, message callapi.ActionMessage) (string, error) {
 
 	var response LoginInfoResponse
+	var botname string
 
 	// Assuming 全局_botid is a global or environment variable
 	globalBotID := config.GetAppID() // Replace with the actual global variable or value
 	userIDStr := fmt.Sprintf("%d", globalBotID)
+	botname = config.GetCustomBotName()
 
 	response.Data = LoginInfoData{
-		Nickname: "gensokyo全域机器人",
+		Nickname: botname,
 		UserID:   userIDStr,
 	}
 	response.Message = ""
@@ -54,4 +57,12 @@ func getLoginInfo(client callapi.Client, api openapi.OpenAPI, apiv2 openapi.Open
 	} else {
 		mylog.Printf("响应get_login_info: %+v", outputMap)
 	}
+	//把结果从struct转换为json
+	result, err := json.Marshal(response)
+	if err != nil {
+		mylog.Printf("Error marshaling data: %v", err)
+		//todo 符合onebotv11 ws返回的错误码
+		return "", nil
+	}
+	return string(result), nil
 }

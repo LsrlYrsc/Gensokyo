@@ -43,7 +43,12 @@ href="https://gitee.com/sanaefox/Gensokyo/releases">下载(Gitee)</a>
   ·
   <a href="https://github.com/hoshinonyaruko/gensokyo/blob/master/CONTRIBUTING.md">参与贡献</a>
 </p>
+<p align="center">
+  <a href="https://gensokyo.bot">项目主页:gensokyo.bot</a>
+</p>
 
+## 引用
+- [`tencent-connect/botgo`](https://github.com/tencent-connect/botgo): 本项目引用了此项目,并做了一点改动.
 
 ## 兼容性
 gensokyo兼容 [OneBot-v11](https://github.com/botuniverse/onebot-11) ，并在其基础上做了一些扩展，详情请看 OneBot 的文档。
@@ -51,6 +56,10 @@ gensokyo兼容 [OneBot-v11](https://github.com/botuniverse/onebot-11) ，并在�
 可将官方的websocket和api转换至onebotv11标准,
 
 支持连接koishi,nonebot2,trss,zerobot,MiraiCQ,hoshino..
+
+支持连接tata,派蒙,炸毛,早苗,yobot...
+
+支持连接Mirai(Overflow)...
 
 可以与支持onebotV11适配器的项目相连接使用.
 
@@ -67,8 +76,8 @@ gensokyo兼容 [OneBot-v11](https://github.com/botuniverse/onebot-11) ，并在�
 
 ### 接口
 
-- [ ] HTTP API 实现中
-- [ ] 反向 HTTP POST 实现中
+- [x] HTTP API
+- [x] 反向 HTTP POST
 - [x] 正向 WebSocket
 - [x] 反向 WebSocket
 
@@ -85,8 +94,13 @@ gensokyo兼容 [OneBot-v11](https://github.com/botuniverse/onebot-11) ，并在�
 - [x] 可自定义图片压缩\图床服务
 - [x] 可编辑的数据库
 - [x] 支持array和信息段
+- [x] 文字,图片,语音,视频,MD,支持多种类型发送
 - [x] 支持全域,频道,频道私聊,群,群私聊
+- [x] 主动信息失败自动转被动,提高信息传达可靠性
+- [x] 提前于官方支持群列表 群成员 api
 - [x] 完善的重连,健壮的连接能力.
+- [x] 支持[CQ:markdown,data=] Markdown发送
+- [x] [`markdown文档`](https://www.yuque.com/km57bt/hlhnxg/ddkv4a2lgcswitei)
 - [x] 持续更新~
 
 

@@ -10,16 +10,16 @@ import (
 )
 
 func init() {
-	callapi.RegisterHandler("send_group_forward_msg", handleSendGroupForwardMsg)
+	callapi.RegisterHandler("send_group_forward_msg", HandleSendGroupForwardMsg)
 }
 
-func handleSendGroupForwardMsg(client callapi.Client, api openapi.OpenAPI, apiv2 openapi.OpenAPI, message callapi.ActionMessage) {
+func HandleSendGroupForwardMsg(client callapi.Client, api openapi.OpenAPI, apiv2 openapi.OpenAPI, message callapi.ActionMessage) (string, error) {
 	nodes, ok := message.Params.Messages.([]interface{})
 	if !ok {
 		mylog.Printf("send_group_forward_msg: Messages 不是 []interface{} 类型")
-		return
+		return "", nil
 	}
-
+	var retmsg string
 	forwardMsgLimit := config.GetForwardMsgLimit() // 获取消息发送条数上限
 	count := 0
 
@@ -44,7 +44,7 @@ func handleSendGroupForwardMsg(client callapi.Client, api openapi.OpenAPI, apiv2
 		content, ok := nodeData["content"].([]interface{})
 		if ok {
 			// 处理 segment 类型的 content
-			messageText, _ = parseMessageContent(callapi.ParamsContent{Message: content})
+			messageText, _ = parseMessageContent(callapi.ParamsContent{Message: content}, message, client, api, apiv2)
 		} else {
 			// 处理直接包含的文本内容
 			contentString, ok := nodeData["content"].(string)
@@ -62,8 +62,10 @@ func handleSendGroupForwardMsg(client callapi.Client, api openapi.OpenAPI, apiv2
 			},
 		}
 
-		handleSendGroupMsg(client, api, apiv2, newMessage)
+		HandleSendGroupMsg(client, api, apiv2, newMessage)
 		count++
 		time.Sleep(500 * time.Millisecond) // 每条消息之间的延时
 	}
+	retmsg, _ = SendResponse(client, nil, &message)
+	return retmsg, nil
 }

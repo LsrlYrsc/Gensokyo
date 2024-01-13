@@ -53,7 +53,16 @@ settings:
   white_prefixs : [""]              #可设置多个 比如设置 机器人 测试 则只有信息以机器人 测试开头会相应 remove_prefix remove_at 需为true时生效
   black_prefix_mode : false         #公私域 过审用 指令黑名单模式开关 过滤被审核打回的指令不响应 无需改机器人后端
   black_prefixs : [""]              #可设置多个 比如设置 查询 则查询开头的信息均被拦截 防止审核失败
-  visual_prefixs : [""]             #虚拟前缀 与white_prefixs配合使用 处理流程自动忽略该前缀 remove_prefix remove_at 需为true时生效
+  visual_prefixs :                  #虚拟前缀 与white_prefixs配合使用 处理流程自动忽略该前缀 remove_prefix remove_at 需为true时生效
+  - prefix: ""                      #虚拟前缀开头 例 你有3个指令 帮助 测试 查询 将 prefix 设置为 工具类 后 则可通过 工具类 帮助 触发机器人
+    whiteList: [""]                 #开关状态取决于 white_prefix_mode 为每一个二级指令头设计独立的白名单
+    No_White_Response : "" 
+  - prefix: ""
+    whiteList: [""]
+    No_White_Response : "" 
+  - prefix: ""
+    whiteList: [""]
+    No_White_Response : "" 
   visible_ip : false                #转换url时,如果server_dir是ip true将以ip形式发出url 默认隐藏url 将server_dir配置为自己域名可以转换url
   forward_msg_limit : 3             #发送折叠转发信息时的最大限制条数 若要发转发信息 请设置lazy_message_id为true
   dev_message_id : false            #在沙盒和测试环境使用无限制msg_id 仅沙盒有效,正式环境请关闭
@@ -72,5 +81,24 @@ settings:
   add_at_group : false              #自动在群聊指令前加上at,某些机器人写法特别,必须有at才反应时,请打开,默认请关闭(如果需要at,不需要at指令混杂,请优化代码适配群场景,群场景目前没有at概念
   url_pic_transfer : false          #把图片url(任意来源图链)变成你备案的白名单url 需要较高上下行+ssl+自备案域名+设置白名单域名(暂时不需要)
   lotus_password : ""               # lotus鉴权 设置后,从gsk需要保持相同密码来访问主gsk
-  ws_server_path : "ws"             #默认监听0.0.0.0:port/ws_server_path 若有安全需求,可不放通port到公网,或设置ws_server_token 若想监听/ 可改为""
+  ws_server_path : "ws"             #默认监听0.0.0.0:port/ws_server_path 若有安全需求,可不放通port到公网,或设置ws_server_token 若想监听/ 可改为"" 若想监听不带/地址请写nil
   idmap_pro : false                 #需开启hash_id配合,高级id转换增强,可以多个真实值bind到同一个虚拟值,对于每个用户,每个群\私聊\判断私聊\频道,都会产生新的虚拟值,但可以多次bind,bind到同一个数字.数据库负担会变大.
+  card_nick : ""                    #默认为空,连接mirai-overflow时,请设置为非空,这里是机器人对用户称谓,为空为插件获取,mirai不支持
+  auto_bind : true                  #测试功能,后期会移除
+  custom_bot_name : "Gensokyo全域机器人" #自定义机器人名字,会在api调用中返回,默认Gensokyo全域机器人
+  send_delay : 300                  #单位 毫秒 默认300ms 可以视情况减少到100或者50
+  AMsgRetryAsPMsg_Count : 1         #当主动信息发送失败时,自动转为后续的被动信息发送,需要开启Lazy message id,该配置项为每次跟随被动信息发送的信息数量,最大5,建议1-3
+  reconnect_times : 100             #反向ws连接失败后的重试次数,希望一直重试,可设置9999
+  heart_beat_interval : 10          #反向ws心跳间隔 单位秒 推荐5-10
+  launch_reconnect_times : 1        #启动时尝试反向ws连接次数,建议先打开应用端再开启gensokyo,因为启动时连接会阻塞webui启动,默认只连接一次,可自行增大
+  white_bypass : []                 #格式[1,2,3],白名单不生效的群,用于设置自己的灰度沙箱,避免测试时候反复开关白名单的不便.
+  transfer_url : true                #默认开启,关闭后自理url发送,配置server_dir为你的域名,配置crt和key后,将域名/url和/image在q.qq.com后台通过校验,自动使用302跳转处理机器人发出的所有域名.
+  native_ob11 : false               #如果你的机器人收到事件报错,请开启此选项增加兼容性
+  ramdom_seq : false                #当多开gensokyo时,如果遇到群信息只能发出一条,请开启每个gsk的此项.(建议使用一个gsk连接多个应用)
+  url_to_qrimage : false            #将信息中的url转换为二维码单独作为图片发出,需要同时设置  #SSL配置类 机器人发送URL设置 的 transfer_url 为 true visible_ip也需要为true
+  qr_size : 200                     #二维码尺寸,单位像素
+  white_bypass_reverse : false      #反转white_bypass的效果,可仅在white_bypass应用white_prefix_mode,场景:您的不同用户群,可以开放不同层次功能,便于您的运营和规化(测试/正式环境)
+  guild_url_image_to_base64 : false #解决频道发不了某些url图片,报错40003问题
+  t_BucketURL : ""                  #COS_REGION 可以在控制台查看 https://console.cloud.tencent.com/cos5/bucket, 关于地域的详情见 https://cloud.tencent.com/document/product/436/6224
+  t_COS_SECRETID : ""               #用户的 SecretId,建议使用子账号密钥,授权遵循最小权限指引，降低使用风险。子账号密钥获取可参考 https://cloud.tencent.com/document/product/598/37140
+  t_COS_SECRETKEY : ""              #同上

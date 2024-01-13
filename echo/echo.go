@@ -1,8 +1,13 @@
 package echo
 
 import (
+	"math/rand"
 	"strconv"
 	"sync"
+	"time"
+
+	"github.com/hoshinonyaruko/gensokyo/config"
+	"github.com/tencent-connect/botgo/dto"
 )
 
 type EchoMapping struct {
@@ -35,6 +40,23 @@ type Int64Stack struct {
 	stack []int64
 }
 
+// MessageGroupPair 用于存储 group 和 groupMessage
+type MessageGroupPair struct {
+	Group        string
+	GroupMessage *dto.MessageToCreate
+}
+
+// 定义全局栈的结构体
+type globalMessageGroup struct {
+	mu    sync.Mutex
+	stack []MessageGroupPair
+}
+
+// 初始化一个全局栈实例
+var globalMessageGroupStack = &globalMessageGroup{
+	stack: make([]MessageGroupPair, 0),
+}
+
 // 定义一个全局的 Int64Stack 实例
 var globalInt64Stack = &Int64Stack{
 	stack: make([]int64, 0),
@@ -64,6 +86,10 @@ func (e *EchoMapping) GenerateKeyv2(appid string, groupid int64, userid int64) s
 	return appid + "_" + strconv.FormatInt(groupid, 10) + "_" + strconv.FormatInt(userid, 10)
 }
 
+func (e *EchoMapping) GenerateKeyv3(appid string, s string) string {
+	return appid + "_" + s
+}
+
 // 添加echo对应的类型
 func AddMsgType(appid string, s int64, msgType string) {
 	key := globalEchoMapping.GenerateKey(appid, s)
@@ -73,16 +99,33 @@ func AddMsgType(appid string, s int64, msgType string) {
 }
 
 // 添加echo对应的messageid
-func AddMsgID(appid string, s int64, msgID string) {
-	key := globalEchoMapping.GenerateKey(appid, s)
+func AddMsgIDv3(appid string, s string, msgID string) {
+	key := globalEchoMapping.GenerateKeyv3(appid, s)
 	globalEchoMapping.mu.Lock()
 	defer globalEchoMapping.mu.Unlock()
 	globalEchoMapping.msgIDMapping[key] = msgID
 }
 
+// GetMsgIDv3 返回给定appid和s的msgID
+func GetMsgIDv3(appid string, s string) string {
+	key := globalEchoMapping.GenerateKeyv3(appid, s)
+	globalEchoMapping.mu.Lock()
+	defer globalEchoMapping.mu.Unlock()
+
+	return globalEchoMapping.msgIDMapping[key]
+}
+
 // 添加group和userid对应的messageid
 func AddMsgIDv2(appid string, groupid int64, userid int64, msgID string) {
 	key := globalEchoMapping.GenerateKeyv2(appid, groupid, userid)
+	globalEchoMapping.mu.Lock()
+	defer globalEchoMapping.mu.Unlock()
+	globalEchoMapping.msgIDMapping[key] = msgID
+}
+
+// 添加echo对应的messageid
+func AddMsgID(appid string, s int64, msgID string) {
+	key := globalEchoMapping.GenerateKey(appid, s)
 	globalEchoMapping.mu.Lock()
 	defer globalEchoMapping.mu.Unlock()
 	globalEchoMapping.msgIDMapping[key] = msgID
@@ -123,11 +166,16 @@ func AddMappingSeq(key string, value int) {
 	globalStringToIntMappingSeq.mapping[key] = value
 }
 
-// GetMapping 根据给定的 string 键获取映射值
+// GetMappingSeq 根据给定的 string 键获取映射值
 func GetMappingSeq(key string) int {
-	globalStringToIntMappingSeq.mu.Lock()
-	defer globalStringToIntMappingSeq.mu.Unlock()
-	return globalStringToIntMappingSeq.mapping[key]
+	if config.GetRamDomSeq() {
+		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+		return rng.Intn(10000) + 1 // 生成 1 到 10000 的随机数
+	} else {
+		globalStringToIntMappingSeq.mu.Lock()
+		defer globalStringToIntMappingSeq.mu.Unlock()
+		return globalStringToIntMappingSeq.mapping[key]
+	}
 }
 
 // AddMapping 添加一个新的映射
@@ -167,4 +215,39 @@ func GetFileTimeLimit() int64 {
 		return 0 // 当栈为空时返回 0
 	}
 	return globalInt64Stack.stack[len(globalInt64Stack.stack)-1]
+}
+
+// PushGlobalStack 向全局栈中添加一个新的 MessageGroupPair
+func PushGlobalStack(pair MessageGroupPair) {
+	globalMessageGroupStack.mu.Lock()
+	defer globalMessageGroupStack.mu.Unlock()
+	globalMessageGroupStack.stack = append(globalMessageGroupStack.stack, pair)
+}
+
+// PopGlobalStackMulti 从全局栈中取出指定数量的 MessageGroupPair，但不删除它们
+func PopGlobalStackMulti(count int) []MessageGroupPair {
+	globalMessageGroupStack.mu.Lock()
+	defer globalMessageGroupStack.mu.Unlock()
+
+	if count == 0 || len(globalMessageGroupStack.stack) == 0 {
+		return nil
+	}
+
+	if count > len(globalMessageGroupStack.stack) {
+		count = len(globalMessageGroupStack.stack)
+	}
+
+	return globalMessageGroupStack.stack[:count]
+}
+
+// RemoveFromGlobalStack 从全局栈中删除指定下标的元素
+func RemoveFromGlobalStack(index int) {
+	globalMessageGroupStack.mu.Lock()
+	defer globalMessageGroupStack.mu.Unlock()
+
+	if index < 0 || index >= len(globalMessageGroupStack.stack) {
+		return // 下标越界检查
+	}
+
+	globalMessageGroupStack.stack = append(globalMessageGroupStack.stack[:index], globalMessageGroupStack.stack[index+1:]...)
 }

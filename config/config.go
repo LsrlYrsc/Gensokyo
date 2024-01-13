@@ -25,64 +25,114 @@ type Config struct {
 	Version  int      `yaml:"version"`
 	Settings Settings `yaml:"settings"`
 }
-
+type VisualPrefixConfig struct {
+	Prefix          string   `yaml:"prefix"`
+	WhiteList       []string `yaml:"whiteList"`
+	NoWhiteResponse string   `yaml:"No_White_Response"`
+}
 type Settings struct {
-	WsAddress              []string `yaml:"ws_address"`
-	AppID                  uint64   `yaml:"app_id"`
-	Token                  string   `yaml:"token"`
-	ClientSecret           string   `yaml:"client_secret"`
-	TextIntent             []string `yaml:"text_intent"`
-	GlobalChannelToGroup   bool     `yaml:"global_channel_to_group"`
-	GlobalPrivateToChannel bool     `yaml:"global_private_to_channel"`
-	Array                  bool     `yaml:"array"`
-	Server_dir             string   `yaml:"server_dir"`
-	Lotus                  bool     `yaml:"lotus"`
-	Port                   string   `yaml:"port"`
-	WsToken                []string `yaml:"ws_token,omitempty"`         // 连接wss时使用,不是wss可留空 一一对应
-	MasterID               []string `yaml:"master_id,omitempty"`        // 如果需要在群权限判断是管理员是,将user_id填入这里,master_id是一个文本数组
-	EnableWsServer         bool     `yaml:"enable_ws_server,omitempty"` //正向ws开关
-	WsServerToken          string   `yaml:"ws_server_token,omitempty"`  //正向ws token
-	IdentifyFile           bool     `yaml:"identify_file"`              // 域名校验文件
-	Crt                    string   `yaml:"crt"`
-	Key                    string   `yaml:"key"`
-	DeveloperLog           bool     `yaml:"developer_log"`
-	Username               string   `yaml:"server_user_name"`
-	Password               string   `yaml:"server_user_password"`
-	ImageLimit             int      `yaml:"image_sizelimit"`
-	RemovePrefix           bool     `yaml:"remove_prefix"`
-	BackupPort             string   `yaml:"backup_port"`
-	DevlopAcDir            string   `yaml:"develop_access_token_dir"`
-	RemoveAt               bool     `yaml:"remove_at"`
-	DevBotid               string   `yaml:"develop_bot_id"`
-	SandBoxMode            bool     `yaml:"sandbox_mode"`
-	Title                  string   `yaml:"title"`
-	HashID                 bool     `yaml:"hash_id"`
-	TwoWayEcho             bool     `yaml:"twoway_echo"`
-	LazyMessageId          bool     `yaml:"lazy_message_id"`
-	WhitePrefixMode        bool     `yaml:"white_prefix_mode"`
-	WhitePrefixs           []string `yaml:"white_prefixs"`
-	BlackPrefixMode        bool     `yaml:"black_prefix_mode"`
-	BlackPrefixs           []string `yaml:"black_prefixs"`
-	VisualPrefixs          []string `yaml:"visual_prefixs"`
-	VisibleIp              bool     `yaml:"visible_ip"`
-	ForwardMsgLimit        int      `yaml:"forward_msg_limit"`
-	DevMessgeID            bool     `yaml:"dev_message_id"`
-	LogLevel               int      `yaml:"log_level"`
-	SaveLogs               bool     `yaml:"save_logs"`
-	BindPrefix             string   `yaml:"bind_prefix"`
-	MePrefix               string   `yaml:"me_prefix"`
-	FrpPort                string   `yaml:"frp_port"`
-	RemoveBotAtGroup       bool     `yaml:"remove_bot_at_group"`
-	ImageLimitB            int      `yaml:"image_limit"`
-	RecordSampleRate       int      `yaml:"record_sampleRate"`
-	RecordBitRate          int      `yaml:"record_bitRate"`
-	NoWhiteResponse        string   `yaml:"No_White_Response"`
-	SendError              bool     `yaml:"send_error"`
-	AddAtGroup             bool     `yaml:"add_at_group"`
-	UrlPicTransfer         bool     `yaml:"url_pic_transfer"`
-	LotusPassword          string   `yaml:"lotus_password"`
-	WsServerPath           string   `yaml:"ws_server_path"`
-	IdmapPro               bool     `yaml:"idmap_pro"`
+	WsAddress              []string             `yaml:"ws_address"`
+	AppID                  uint64               `yaml:"app_id"`
+	Token                  string               `yaml:"token"`
+	ClientSecret           string               `yaml:"client_secret"`
+	TextIntent             []string             `yaml:"text_intent"`
+	GlobalChannelToGroup   bool                 `yaml:"global_channel_to_group"`
+	GlobalPrivateToChannel bool                 `yaml:"global_private_to_channel"`
+	Array                  bool                 `yaml:"array"`
+	Server_dir             string               `yaml:"server_dir"`
+	Lotus                  bool                 `yaml:"lotus"`
+	Port                   string               `yaml:"port"`
+	WsToken                []string             `yaml:"ws_token,omitempty"`         // 连接wss时使用,不是wss可留空 一一对应
+	MasterID               []string             `yaml:"master_id,omitempty"`        // 如果需要在群权限判断是管理员是,将user_id填入这里,master_id是一个文本数组
+	EnableWsServer         bool                 `yaml:"enable_ws_server,omitempty"` //正向ws开关
+	WsServerToken          string               `yaml:"ws_server_token,omitempty"`  //正向ws token
+	IdentifyFile           bool                 `yaml:"identify_file"`              // 域名校验文件
+	Crt                    string               `yaml:"crt"`
+	Key                    string               `yaml:"key"`
+	DeveloperLog           bool                 `yaml:"developer_log"`
+	Username               string               `yaml:"server_user_name"`
+	Password               string               `yaml:"server_user_password"`
+	ImageLimit             int                  `yaml:"image_sizelimit"`
+	RemovePrefix           bool                 `yaml:"remove_prefix"`
+	BackupPort             string               `yaml:"backup_port"`
+	DevlopAcDir            string               `yaml:"develop_access_token_dir"`
+	RemoveAt               bool                 `yaml:"remove_at"`
+	DevBotid               string               `yaml:"develop_bot_id"`
+	SandBoxMode            bool                 `yaml:"sandbox_mode"`
+	Title                  string               `yaml:"title"`
+	HashID                 bool                 `yaml:"hash_id"`
+	TwoWayEcho             bool                 `yaml:"twoway_echo"`
+	LazyMessageId          bool                 `yaml:"lazy_message_id"`
+	WhitePrefixMode        bool                 `yaml:"white_prefix_mode"`
+	WhitePrefixs           []string             `yaml:"white_prefixs"`
+	BlackPrefixMode        bool                 `yaml:"black_prefix_mode"`
+	BlackPrefixs           []string             `yaml:"black_prefixs"`
+	VisualPrefixs          []VisualPrefixConfig `yaml:"visual_prefixs"`
+	VisibleIp              bool                 `yaml:"visible_ip"`
+	ForwardMsgLimit        int                  `yaml:"forward_msg_limit"`
+	DevMessgeID            bool                 `yaml:"dev_message_id"`
+	LogLevel               int                  `yaml:"log_level"`
+	SaveLogs               bool                 `yaml:"save_logs"`
+	BindPrefix             string               `yaml:"bind_prefix"`
+	MePrefix               string               `yaml:"me_prefix"`
+	FrpPort                string               `yaml:"frp_port"`
+	RemoveBotAtGroup       bool                 `yaml:"remove_bot_at_group"`
+	ImageLimitB            int                  `yaml:"image_limit"`
+	RecordSampleRate       int                  `yaml:"record_sampleRate"`
+	RecordBitRate          int                  `yaml:"record_bitRate"`
+	NoWhiteResponse        string               `yaml:"No_White_Response"`
+	SendError              bool                 `yaml:"send_error"`
+	AddAtGroup             bool                 `yaml:"add_at_group"`
+	UrlPicTransfer         bool                 `yaml:"url_pic_transfer"`
+	LotusPassword          string               `yaml:"lotus_password"`
+	WsServerPath           string               `yaml:"ws_server_path"`
+	IdmapPro               bool                 `yaml:"idmap_pro"`
+	CardAndNick            string               `yaml:"card_nick"`
+	AutoBind               bool                 `yaml:"auto_bind"`
+	CustomBotName          string               `yaml:"custom_bot_name"`
+	SendDelay              int                  `yaml:"send_delay"`
+	AtoPCount              int                  `yaml:"AMsgRetryAsPMsg_Count"`
+	ReconnecTimes          int                  `yaml:"reconnect_times"`
+	HeartBeatInterval      int                  `yaml:"heart_beat_interval"`
+	LaunchReconectTimes    int                  `yaml:"launch_reconnect_times"`
+	UnlockPrefix           string               `yaml:"unlock_prefix"`
+	WhiteBypass            []int64              `yaml:"white_bypass"`
+	TransferUrl            bool                 `yaml:"transfer_url"`
+	HttpAddress            string               `yaml:"http_address"`
+	HttpVersion            int                  `yaml:"http_version"`
+	HttpTimeOut            int                  `yaml:"http_timeout"`
+	PostUrl                []string             `yaml:"post_url"`
+	PostSecret             []string             `yaml:"post_secret"`
+	PostMaxRetries         []int                `yaml:"post_max_retries"`
+	PostRetriesInterval    []int                `yaml:"post_retries_interval"`
+	NativeOb11             bool                 `yaml:"native_ob11"`
+	RamDomSeq              bool                 `yaml:"ramdom_seq"`
+	UrlToQrimage           bool                 `yaml:"url_to_qrimage"`
+	QrSize                 int                  `yaml:"qr_size"`
+	WhiteBypassRevers      bool                 `yaml:"white_bypass_reverse"`
+	GuildUrlImageToBase64  bool                 `yaml:"guild_url_image_to_base64"`
+	TencentBucketName      string               `yaml:"t_COS_BUCKETNAME"`
+	TencentBucketRegion    string               `yaml:"t_COS_REGION"`
+	TencentCosSecretid     string               `yaml:"t_COS_SECRETID"`
+	TencentSecretKey       string               `yaml:"t_COS_SECRETKEY"`
+	TencentAudit           bool                 `yaml:"t_audit"`
+	OssType                int                  `yaml:"oss_type"`
+	BaiduBOSBucketName     string               `yaml:"b_BOS_BUCKETNAME"`
+	BaiduBCEAK             string               `yaml:"b_BCE_AK"`
+	BaiduBCESK             string               `yaml:"b_BCE_SK"`
+	BaiduAudit             int                  `yaml:"b_audit"`
+	AliyunEndpoint         string               `yaml:"a_OSS_EndPoint"`
+	AliyunAccessKeyId      string               `yaml:"a_OSS_AccessKeyId"`
+	AliyunAccessKeySecret  string               `yaml:"a_OSS_AccessKeySecret"`
+	AliyunBucketName       string               `yaml:"a_OSS_BucketName"`
+	AliyunAudit            bool                 `yaml:"a_audit"`
+	Alias                  []string             `yaml:"alias"`
+	SelfIntroduce          []string             `yaml:"self_introduce"`
+	WhiteEnable            []bool               `yaml:"white_enable"`
+	IdentifyAppids         []int64              `yaml:"identify_appids"`
+	TransFormApiIds        bool                 `yaml:"transform_api_ids"`
+	CustomTemplateID       string               `yaml:"custom_template_id"`
+	KeyBoardID             string               `yaml:"keyboard_id"`
 }
 
 // LoadConfig 从文件中加载配置并初始化单例配置
@@ -99,7 +149,17 @@ func LoadConfig(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	//todo remove it 破坏性变更的擦屁股代码
+	var ischange bool
+	configData, ischange = replaceVisualPrefixsLine(configData)
+	if ischange {
+		err = os.WriteFile(path, configData, 0644)
+		if err != nil {
+			// 处理写入错误
+			return nil, err
+		}
+	}
+	//mylog.Printf("dev_ischange:%v", ischange)
 	conf := &Config{}
 	err = yaml.Unmarshal(configData, conf)
 	if err != nil {
@@ -496,12 +556,20 @@ func GetVisibleIP() bool {
 	return instance.Settings.VisibleIp
 }
 
-// 获取虚拟指令前缀数组
-func GetVisualkPrefixs() []string {
+// 修改 GetVisualkPrefixs 函数以返回新类型
+func GetVisualkPrefixs() []VisualPrefixConfig {
 	mu.Lock()
 	defer mu.Unlock()
 	if instance != nil {
-		return instance.Settings.VisualPrefixs
+		var varvisualPrefixes []VisualPrefixConfig
+		for _, vp := range instance.Settings.VisualPrefixs {
+			varvisualPrefixes = append(varvisualPrefixes, VisualPrefixConfig{
+				Prefix:          vp.Prefix,
+				WhiteList:       vp.WhiteList,
+				NoWhiteResponse: vp.NoWhiteResponse,
+			})
+		}
+		return varvisualPrefixes
 	}
 	return nil // 返回nil，如果instance为nil
 }
@@ -988,4 +1056,623 @@ func GetIdmapPro() bool {
 		return false
 	}
 	return instance.Settings.IdmapPro
+}
+
+// 获取GetCardAndNick的值
+func GetCardAndNick() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to GetCardAndNick value.")
+		return ""
+	}
+	return instance.Settings.CardAndNick
+}
+
+// 获取GetAutoBind的值
+func GetAutoBind() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to GetAutoBind value.")
+		return false
+	}
+	return instance.Settings.AutoBind
+}
+
+// 获取GetCustomBotName的值
+func GetCustomBotName() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to GetCustomBotName value.")
+		return "Gensokyo全域机器人"
+	}
+	return instance.Settings.CustomBotName
+}
+
+// 获取send_delay的值
+func GetSendDelay() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to GetSendDelay value.")
+		return 300
+	}
+	return instance.Settings.SendDelay
+}
+
+// 获取GetAtoPCount的值
+func GetAtoPCount() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to AtoPCount value.")
+		return 5
+	}
+	return instance.Settings.AtoPCount
+}
+
+// 获取GetReconnecTimes的值
+func GetReconnecTimes() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to ReconnecTimes value.")
+		return 50
+	}
+	return instance.Settings.ReconnecTimes
+}
+
+// 获取GetHeartBeatInterval的值
+func GetHeartBeatInterval() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to HeartBeatInterval value.")
+		return 5
+	}
+	return instance.Settings.HeartBeatInterval
+}
+
+// 获取LaunchReconectTimes
+func GetLaunchReconectTimes() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to LaunchReconectTimes value.")
+		return 3
+	}
+	return instance.Settings.LaunchReconectTimes
+}
+
+// 获取GetUnlockPrefix
+func GetUnlockPrefix() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to UnlockPrefix value.")
+		return "/unlock"
+	}
+	return instance.Settings.UnlockPrefix
+}
+
+// 获取白名单例外群数组
+func GetWhiteBypass() []int64 {
+	mu.Lock()
+	defer mu.Unlock()
+	if instance != nil {
+		return instance.Settings.WhiteBypass
+	}
+	return nil // 返回nil，如果instance为nil
+}
+
+// 获取GetTransferUrl的值
+func GetTransferUrl() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to GetTransferUrl value.")
+		return false
+	}
+	return instance.Settings.TransferUrl
+}
+
+// 获取 HTTP 地址
+func GetHttpAddress() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get HTTP address.")
+		return ""
+	}
+	return instance.Settings.HttpAddress
+}
+
+// 获取 HTTP 版本
+func GetHttpVersion() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get HTTP version.")
+		return 11
+	}
+	return instance.Settings.HttpVersion
+}
+
+// 获取 HTTP 超时时间
+func GetHttpTimeOut() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get HTTP timeout.")
+		return 5
+	}
+	return instance.Settings.HttpTimeOut
+}
+
+// 获取 POST URL 数组
+func GetPostUrl() []string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get POST URL.")
+		return nil
+	}
+	return instance.Settings.PostUrl
+}
+
+// 获取 POST 密钥数组
+func GetPostSecret() []string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get POST secret.")
+		return nil
+	}
+	return instance.Settings.PostSecret
+}
+
+// 获取 POST 最大重试次数数组
+func GetPostMaxRetries() []int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get POST max retries.")
+		return nil
+	}
+	return instance.Settings.PostMaxRetries
+}
+
+// 获取 POST 重试间隔数组
+func GetPostRetriesInterval() []int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get POST retries interval.")
+		return nil
+	}
+	return instance.Settings.PostRetriesInterval
+}
+
+// 获取GetTransferUrl的值
+func GetNativeOb11() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to NativeOb11 value.")
+		return false
+	}
+	return instance.Settings.NativeOb11
+}
+
+// 获取GetRamDomSeq的值
+func GetRamDomSeq() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to GetRamDomSeq value.")
+		return false
+	}
+	return instance.Settings.RamDomSeq
+}
+
+// 获取GetUrlToQrimage的值
+func GetUrlToQrimage() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to GetUrlToQrimage value.")
+		return false
+	}
+	return instance.Settings.UrlToQrimage
+}
+
+// 获取GetQrSize的值
+func GetQrSize() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to QrSize value.")
+		return 200
+	}
+	return instance.Settings.QrSize
+}
+
+func replaceVisualPrefixsLine(configData []byte) ([]byte, bool) {
+	// 定义新的 visual_prefixs 部分
+	newVisualPrefixs := `  visual_prefixs :                  #虚拟前缀 与white_prefixs配合使用 处理流程自动忽略该前缀 remove_prefix remove_at 需为true时生效
+  - prefix: ""                      #虚拟前缀开头 例 你有3个指令 帮助 测试 查询 将 prefix 设置为 工具类 后 则可通过 工具类 帮助 触发机器人
+    whiteList: [""]                 #开关状态取决于 white_prefix_mode 为每一个二级指令头设计独立的白名单
+    No_White_Response : "" 
+  - prefix: ""
+    whiteList: [""]
+    No_White_Response : "" 
+  - prefix: ""
+    whiteList: [""]
+    No_White_Response : "" `
+
+	// 将 byte 数组转换为字符串
+	configStr := string(configData)
+
+	// 按行分割 configStr
+	lines := strings.Split(configStr, "\n")
+
+	// 创建一个新的字符串构建器
+	var newConfigData strings.Builder
+
+	// 标记是否进行了替换
+	replaced := false
+
+	// 遍历所有行
+	for _, line := range lines {
+		// 检查是否是 visual_prefixs 开头的行
+		if strings.HasPrefix(strings.TrimSpace(line), "visual_prefixs : [") {
+			// 替换为新的 visual_prefixs 部分
+			newConfigData.WriteString(newVisualPrefixs + "\n")
+			replaced = true
+			continue // 跳过原有行
+		}
+		newConfigData.WriteString(line + "\n")
+	}
+
+	// 返回新配置和是否发生了替换的标记
+	return []byte(newConfigData.String()), replaced
+}
+
+// 获取GetWhiteBypassRevers的值
+func GetWhiteBypassRevers() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to GetWhiteBypassRevers value.")
+		return false
+	}
+	return instance.Settings.WhiteBypassRevers
+}
+
+// 获取GetGuildUrlImageToBase64的值
+func GetGuildUrlImageToBase64() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to GuildUrlImageToBase64 value.")
+		return false
+	}
+	return instance.Settings.GuildUrlImageToBase64
+}
+
+// GetTencentBucketURL 获取 TencentBucketURL
+func GetTencentBucketURL() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get TencentBucketURL.")
+		return ""
+	}
+
+	bucketName := instance.Settings.TencentBucketName
+	bucketRegion := instance.Settings.TencentBucketRegion
+
+	// 构建并返回URL
+	if bucketName == "" || bucketRegion == "" {
+		mylog.Println("Warning: Tencent bucket name or region is not configured.")
+		return ""
+	}
+
+	return fmt.Sprintf("https://%s.cos.%s.myqcloud.com", bucketName, bucketRegion)
+}
+
+// GetTencentCosSecretid 获取 TencentCosSecretid
+func GetTencentCosSecretid() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get TencentCosSecretid.")
+		return ""
+	}
+	return instance.Settings.TencentCosSecretid
+}
+
+// GetTencentSecretKey 获取 TencentSecretKey
+func GetTencentSecretKey() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get TencentSecretKey.")
+		return ""
+	}
+	return instance.Settings.TencentSecretKey
+}
+
+// 获取GetTencentAudit的值
+func GetTencentAudit() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to TencentAudit value.")
+		return false
+	}
+	return instance.Settings.TencentAudit
+}
+
+// 获取 Oss 模式
+func GetOssType() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get ExtraPicAuditingType version.")
+		return 0
+	}
+	return instance.Settings.OssType
+}
+
+// 获取BaiduBOSBucketName
+func GetBaiduBOSBucketName() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get BaiduBOSBucketName.")
+		return ""
+	}
+	return instance.Settings.BaiduBOSBucketName
+}
+
+// 获取BaiduBCEAK
+func GetBaiduBCEAK() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get BaiduBCEAK.")
+		return ""
+	}
+	return instance.Settings.BaiduBCEAK
+}
+
+// 获取BaiduBCESK
+func GetBaiduBCESK() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get BaiduBCESK.")
+		return ""
+	}
+	return instance.Settings.BaiduBCESK
+}
+
+// 获取BaiduAudit
+func GetBaiduAudit() int {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get BaiduAudit.")
+		return 0
+	}
+	return instance.Settings.BaiduAudit
+}
+
+// 获取阿里云的oss地址 外网的
+func GetAliyunEndpoint() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get AliyunEndpoint.")
+		return ""
+	}
+	return instance.Settings.AliyunEndpoint
+}
+
+// GetRegionID 从 AliyunEndpoint 获取 regionId
+func GetRegionID() string {
+	endpoint := GetAliyunEndpoint()
+	if endpoint == "" {
+		return ""
+	}
+
+	// 去除协议头（如 "https://"）
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+	endpoint = strings.TrimPrefix(endpoint, "https://")
+
+	// 将 endpoint 按照 "." 分割
+	parts := strings.Split(endpoint, ".")
+	if len(parts) >= 2 {
+		// 第一部分应该是包含 regionId 的信息（例如 "oss-cn-hangzhou"）
+		regionInfo := parts[0]
+		// 进一步提取 regionId
+		regionParts := strings.SplitN(regionInfo, "-", 3)
+		if len(regionParts) >= 3 {
+			// 返回 "cn-hangzhou" 部分
+			return regionParts[1] + "-" + regionParts[2]
+		}
+	}
+	return ""
+}
+
+// GetAliyunAccessKeyId 获取阿里云OSS的AccessKeyId
+func GetAliyunAccessKeyId() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get AliyunAccessKeyId.")
+		return ""
+	}
+	return instance.Settings.AliyunAccessKeyId
+}
+
+// GetAliyunAccessKeySecret 获取阿里云OSS的AccessKeySecret
+func GetAliyunAccessKeySecret() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get AliyunAccessKeySecret.")
+		return ""
+	}
+	return instance.Settings.AliyunAccessKeySecret
+}
+
+// GetAliyunBucketName 获取阿里云OSS的AliyunBucketName
+func GetAliyunBucketName() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get AliyunBucketName.")
+		return ""
+	}
+	return instance.Settings.AliyunBucketName
+}
+
+// 获取GetAliyunAudit的值
+func GetAliyunAudit() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to AliyunAudit value.")
+		return false
+	}
+	return instance.Settings.AliyunAudit
+}
+
+// 获取Alias的值
+func GetAlias() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	if instance != nil {
+		return instance.Settings.Alias
+	}
+	return nil // 返回nil，如果instance为nil
+}
+
+// 获取SelfIntroduce的值
+func GetSelfIntroduce() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	if instance != nil {
+		return instance.Settings.SelfIntroduce
+	}
+	return nil // 返回nil，如果instance为nil
+}
+
+// 获取WhiteEnable的值
+func GetWhiteEnable(index int) bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	// 检查instance或instance.Settings.WhiteEnable是否为nil
+	if instance == nil || instance.Settings.WhiteEnable == nil {
+		return true // 如果为nil，返回默认值true
+	}
+
+	// 调整索引以符合从0开始的数组索引
+	adjustedIndex := index - 1
+
+	// 检查索引是否在数组范围内
+	if adjustedIndex >= 0 && adjustedIndex < len(instance.Settings.WhiteEnable) {
+		return instance.Settings.WhiteEnable[adjustedIndex]
+	}
+
+	// 如果索引超出范围，返回默认值true
+	return true
+}
+
+// 获取IdentifyAppids的值
+func GetIdentifyAppids() []int64 {
+	mu.Lock()
+	defer mu.Unlock()
+	if instance != nil {
+		return instance.Settings.IdentifyAppids
+	}
+	return nil // 返回nil，如果instance为nil
+}
+
+// 获取 TransFormApiIds 的值
+func GetTransFormApiIds() bool {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to TransFormApiIds value.")
+		return false
+	}
+	return instance.Settings.TransFormApiIds
+}
+
+// 获取 CustomTemplateID 的值
+func GetCustomTemplateID() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get CustomTemplateID.")
+		return ""
+	}
+	return instance.Settings.CustomTemplateID
+}
+
+// 获取 KeyBoardIDD 的值
+func GetKeyBoardID() string {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if instance == nil {
+		mylog.Println("Warning: instance is nil when trying to get KeyBoardID.")
+		return ""
+	}
+	return instance.Settings.KeyBoardID
 }

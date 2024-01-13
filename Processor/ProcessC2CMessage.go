@@ -2,6 +2,7 @@
 package Processor
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -47,6 +48,10 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 			if !config.GetHashIDValue() {
 				mylog.Fatalf("避坑日志:你开启了高级id转换,请设置hash_id为true,并且删除idmaps并重启")
 			}
+			//补救措施
+			idmap.SimplifiedStoreID(data.Author.ID)
+			//补救措施
+			echo.AddMsgIDv3(AppIDString, data.Author.ID, data.ID)
 		} else {
 			//将真实id转为int userid64
 			userid64, err = idmap.StoreIDv2(data.Author.ID)
@@ -64,11 +69,13 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 			log.Fatalf("Error storing ID: %v", err)
 		}
 		messageID := int(messageID64)
-		if len(data.Attachments) > 0 && data.Attachments[0].URL != "" {
-			p.Autobind(data)
+		if config.GetAutoBind() {
+			if len(data.Attachments) > 0 && data.Attachments[0].URL != "" {
+				p.Autobind(data)
+			}
 		}
 		//转换at
-		messageText := handlers.RevertTransformedText(data, "group_private", p.Api, p.Apiv2)
+		messageText := handlers.RevertTransformedText(data, "group_private", p.Api, p.Apiv2, userid64, userid64, config.GetWhiteEnable(5))
 		if messageText == "" {
 			mylog.Printf("信息被自定义黑白名单拦截")
 			return nil
@@ -79,6 +86,12 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 		var segmentedMessages interface{} = messageText
 		if config.GetArrayValue() {
 			segmentedMessages = handlers.ConvertToSegmentedMessage(data)
+		}
+		var IsBindedUserId bool
+		if config.GetHashIDValue() {
+			IsBindedUserId = idmap.CheckValue(data.Author.ID, userid64)
+		} else {
+			IsBindedUserId = idmap.CheckValuev2(userid64)
 		}
 		privateMsg := OnebotPrivateMessage{
 			RawMessage:  messageText,
@@ -94,11 +107,19 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 			},
 			SubType: "friend",
 			Time:    time.Now().Unix(),
-			Avatar:  "", //todo 同上
+		}
+		if !config.GetNativeOb11() {
+			privateMsg.RealMessageType = "group_private"
+			privateMsg.IsBindedUserId = IsBindedUserId
+			if IsBindedUserId {
+				privateMsg.Avatar, _ = GenerateAvatarURL(userid64)
+			}
 		}
 		// 根据条件判断是否添加Echo字段
 		if config.GetTwoWayEcho() {
 			privateMsg.Echo = echostr
+			//用向应用端(如果支持)发送echo,来确定客户端的send_msg对应的触发词原文
+			echo.AddMsgIDv3(AppIDString, echostr, messageText)
 		}
 		// 将当前s和appid和message进行映射
 		echo.AddMsgID(AppIDString, s, data.ID)
@@ -110,6 +131,8 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 		echo.AddLazyMessageId(strconv.FormatInt(userid64, 10), data.ID, time.Now())
 		//储存类型
 		echo.AddMsgType(AppIDString, userid64, "group_private")
+		//储存当前群或频道号的类型
+		idmap.WriteConfigv2(fmt.Sprint(userid64), "type", "group_private")
 		//储存当前群或频道号的类型 私信不需要
 		//idmap.WriteConfigv2(data.ChannelID, "type", "group_private")
 
@@ -123,14 +146,6 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 	} else {
 		//将私聊信息转化为群信息(特殊需求情况下)
 
-		//转换at
-		messageText := handlers.RevertTransformedText(data, "group_private", p.Api, p.Apiv2)
-		if messageText == "" {
-			mylog.Printf("信息被自定义黑白名单拦截")
-			return nil
-		}
-		//框架内指令
-		p.HandleFrameworkCommand(messageText, data, "group_private")
 		//转换appid
 		AppIDString := strconv.FormatUint(p.Settings.AppID, 10)
 		//构造echo
@@ -139,14 +154,18 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 		//映射str的userid到int
 		var userid64 int64
 		var err error
+		var magic int64
 		if config.GetIdmapPro() {
 			//将真实id转为int userid64
-			_, userid64, err = idmap.StoreIDv2Pro("group_private", data.Author.ID)
+			magic, userid64, err = idmap.StoreIDv2Pro("group_private", data.Author.ID)
+			mylog.Printf("魔法数字:%v", magic) //690426430
 			if err != nil {
 				mylog.Fatalf("Error storing ID: %v", err)
 			}
 			//当参数不全,降级时
 			_, _ = idmap.StoreIDv2(data.Author.ID)
+			//补救措施
+			idmap.SimplifiedStoreID(data.Author.ID)
 		} else {
 			//将真实id转为int userid64
 			userid64, err = idmap.StoreIDv2(data.Author.ID)
@@ -154,6 +173,14 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 				mylog.Fatalf("Error storing ID: %v", err)
 			}
 		}
+		//转换at
+		messageText := handlers.RevertTransformedText(data, "group_private", p.Api, p.Apiv2, userid64, userid64, config.GetWhiteEnable(5))
+		if messageText == "" {
+			mylog.Printf("信息被自定义黑白名单拦截")
+			return nil
+		}
+		//框架内指令
+		p.HandleFrameworkCommand(messageText, data, "group_private")
 		//映射str的messageID到int
 		messageID64, err := idmap.StoreIDv2(data.ID)
 		if err != nil {
@@ -162,6 +189,7 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 		}
 		messageID := int(messageID64)
 		//todo 判断array模式 然后对Message处理成array格式
+		IsBindedUserId := idmap.CheckValue(data.Author.ID, userid64)
 		groupMsg := OnebotGroupMessage{
 			RawMessage:  messageText,
 			Message:     messageText,
@@ -172,16 +200,30 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 			SelfID:      int64(p.Settings.AppID),
 			UserID:      userid64,
 			Sender: Sender{
-				Nickname: "",
-				UserID:   userid64,
+				UserID: userid64,
+				TinyID: "0",
+				Sex:    "0",
+				Age:    0,
+				Area:   "0",
+				Level:  "0",
 			},
-			SubType: "normal",
-			Time:    time.Now().Unix(),
-			Avatar:  "",
+			SubType:         "normal",
+			Time:            time.Now().Unix(),
+			Avatar:          "",
+			RealMessageType: "group_private",
+			IsBindedUserId:  IsBindedUserId,
+		}
+		//根据条件判断是否增加nick和card
+		var CaN = config.GetCardAndNick()
+		if CaN != "" {
+			groupMsg.Sender.Nickname = CaN
+			groupMsg.Sender.Card = CaN
 		}
 		// 根据条件判断是否添加Echo字段
 		if config.GetTwoWayEcho() {
 			groupMsg.Echo = echostr
+			//用向应用端(如果支持)发送echo,来确定客户端的send_msg对应的触发词原文
+			echo.AddMsgIDv3(AppIDString, echostr, messageText)
 		}
 		// 获取MasterID数组
 		masterIDs := config.GetMasterID()
@@ -208,6 +250,8 @@ func (p *Processors) ProcessC2CMessage(data *dto.WSC2CMessageData) error {
 		echo.AddMsgID(AppIDString, userid64, data.ID)
 		//映射类型
 		echo.AddMsgType(AppIDString, userid64, "group_private")
+		//储存当前群或频道号的类型
+		idmap.WriteConfigv2(fmt.Sprint(userid64), "type", "group_private")
 		//懒message_id池
 		echo.AddLazyMessageId(strconv.FormatInt(userid64, 10), data.ID, time.Now())
 
